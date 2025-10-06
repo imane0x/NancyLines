@@ -1,6 +1,7 @@
 import pandas as pd
 import osmnx as ox
 import networkx as nx
+from osm_nancy.utils import nearest_nodes_distance
 def get_street_name(tags, fallback_id):
     if not isinstance(tags, dict):
         tags = {}
@@ -25,6 +26,7 @@ def compute_edges(G, stops_gdf, streets_gdf, buffer_m=20, max_distance=500):
     - edges_df: DataFrame with columns ['from', 'to', 'streets', 'distance_m']
     """
     # Reproject GeoDataFrames to match graph CRS 
+    G_proj = ox.project_graph(G, to_crs=2154)
     stops = stops_gdf.to_crs(2154)
     streets = streets_gdf.to_crs(2154)
     # Ensure a 'name' column exists for streets
@@ -36,7 +38,7 @@ def compute_edges(G, stops_gdf, streets_gdf, buffer_m=20, max_distance=500):
         for j, stop2 in stops.iterrows():
             if stop1["id"] >= stop2["id"]:
                 continue
-
+            distance_m = nearest_nodes_distance(G_proj, stop1, stop2)
             # Only include stop pairs within max_distance
             if distance_m not None and 0 < distance_m  and distance_m <= max_distance:
                 streets1 = streets[streets.geometry.buffer(buffer_m).intersects(stop1.geometry)]
