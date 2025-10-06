@@ -1,7 +1,15 @@
 import pandas as pd
 import osmnx as ox
 import networkx as nx
-
+def get_street_name(tags, fallback_id):
+    if not isinstance(tags, dict):
+        tags = {}
+    name = tags.get('name')
+    if name:
+        return name
+    id_val = tags.get('id', fallback_id)
+    return f"street_{id_val}"
+    
 def compute_edges(G, stops_gdf, streets_gdf, buffer_m=20, max_distance=500):
     """
     Compute edges between stops based on road network distance and nearby streets.
@@ -21,7 +29,7 @@ def compute_edges(G, stops_gdf, streets_gdf, buffer_m=20, max_distance=500):
     streets = streets_gdf.to_crs(2154)
     # Ensure a 'name' column exists for streets
     if 'name' not in streets.columns:
-        streets['name'] = streets['tags'].apply(lambda t: t.get('name', f"street_{t.get('id','')}"))
+        streets['name'] = streets.apply(lambda row: get_street_name(row['tags'], row['id']), axis=1)
     edges_data = []
 
     for i, stop1 in stops.iterrows():
