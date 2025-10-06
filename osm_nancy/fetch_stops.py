@@ -29,5 +29,5 @@ def fetch_stops(nancy_polygon):
 
     gdf = gpd.GeoDataFrame(stops, geometry="geometry", crs="EPSG:4326")
     gdf = gdf[gdf.intersects(nancy_polygon)]
-    print(f"✅ {len(gdf)} bus stops inside Nancy boundary.")
+    print(f" {len(gdf)} bus stops inside Nancy boundary.")
     return gdf
