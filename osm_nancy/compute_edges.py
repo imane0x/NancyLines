@@ -37,7 +37,7 @@ def compute_edges(G, stops_gdf, streets_gdf, buffer_m=20, max_distance=500):
                 edges_data.append({
                     "from": stop1["tags"]["name"],
                     "to": stop2["tags"]["name"],
-                    "streets": street_names,
+                    "streets": list(street_names),
                     "distance_m": distance_m
                 })
 
