@@ -10,8 +10,7 @@ def main():
     streets_gdf = fetch_streets(nancy_polygon)
     stops_gdf = fetch_stops(nancy_polygon)
     G = load_graph()
-    
-    edges_df = compute_edges(G, stops_gdf, streets_gdf, nearest_nodes_distance)
+    edges_df = compute_edges(G, stops_gdf, streets_gdf)
     edges_df.to_json("data/bus_stop_edges_streets.json", orient="records", force_ascii=False)
     print("JSON saved to data/bus_stop_edges_streets.json")
 
