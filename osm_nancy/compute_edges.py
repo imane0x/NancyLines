@@ -1,4 +1,3 @@
-!pip install osmnx
 import pandas as pd
 import osmnx as ox
 import networkx as nx
