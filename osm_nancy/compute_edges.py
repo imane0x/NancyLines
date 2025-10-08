@@ -51,8 +51,8 @@ def compute_edges(G, stops_gdf, streets_gdf, buffer_m=20, max_distance=500):
 
     edges_data = []
 
-    for i, stop1 in stops.iterrows():
-        for j, stop2 in stops.iterrows():
+    for stop1 in stops.iterrows():
+        for stop2 in stops.iterrows():
             if stop1["id"] >= stop2["id"]:
                 continue
 
