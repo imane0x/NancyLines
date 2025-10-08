@@ -9,7 +9,7 @@ def nearest_nodes_distance(G, stop1_geom, stop2_geom):
     node1 = ox.distance.nearest_nodes(G, stop1_geom.x, stop1_geom.y)
     node2 = ox.distance.nearest_nodes(G, stop2_geom.x, stop2_geom.y)
     try:
-        return nx.shortest_path_length(G, node1, node2, weight="length")
+        return ox.routing.shortest_path(G, node1, node2, weight="length")
     except nx.NetworkXNoPath:
         return None
 
