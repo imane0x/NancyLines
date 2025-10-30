@@ -4,15 +4,18 @@ from osm_nancy.fetch_stops import fetch_stops
 from osm_nancy.build_graph import load_graph
 from osm_nancy.compute_edges import compute_edges
 from osm_nancy.utils import nearest_nodes_distance
+from osm_nancy.process_bus_relations import process_bus_relation
+from osm_nancy.generate_pairs import generate_stop_pairs
 
 def main():
-    nancy_polygon = get_nancy_boundary()
-    streets_gdf = fetch_streets(nancy_polygon)
-    stops_gdf = fetch_stops(nancy_polygon)
-    G = load_graph()
-    edges_df = compute_edges(G, stops_gdf, streets_gdf)
-    edges_df.to_json("data/bus_stop_edges_streets.json", orient="records", force_ascii=False)
-    print("JSON saved to data/bus_stop_edges_streets.json")
+    polygon = get_nancy_boundary()
+    graph = load_graph()
+    bus_relations = fetch_bus_relations(polygon)
+    streets =fetch_streets(polygon)
+    stops = get_stops_with_streets(polygon, bus_relations)
+    all_bus_data = process_bus_relation(bus_relations, stops, streets)
+    pairs_data = generate_stop_pairs(all_bus_data)
+
 
 if __name__ == "__main__":
     main()
