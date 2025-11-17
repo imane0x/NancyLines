@@ -22,6 +22,7 @@ class TrainingConfig:
 class DataConfig:
     train_json: str
     eval_paths: List[str]
+    eval_bus_path: List[str]
 
 @dataclass
 class Config:

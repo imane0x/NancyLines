@@ -2,14 +2,14 @@ import os
 import wandb
 import torch
 from unsloth import FastLanguageModel, UnslothTrainer, UnslothTrainingArguments
-from transformers import AutoTokenizer
-from .config import load_config
-from .data import load_train_dataset, split_and_add_eos, load_eval_datasets
-from .eval import evaluate_custom_streets, evaluate_tiny_mmlu
-from .callbacks import UnifiedEvalCallback
+#from transformers import AutoTokenizer
+from config import load_config
+from data import load_train_dataset, split_and_add_eos, load_eval_datasets, load_eval_dataset_bus_stops
+#from eval import evaluate_custom_streets, evaluate_tiny_mmlu
+from callbacks import UnifiedEvalCallback
 
 def main(cfg_path: str):
-    cfg = load_config(cfg_path)
+    cfg = load_config("/lustre/fsn1/projects/rech/knb/umq83db/NancyLines/fine-tuning/config.yaml")
 
     # WandB setup (offline by default)
     wandb_dir = os.environ.get("WANDB_DIR", "./wandb")
@@ -30,7 +30,8 @@ def main(cfg_path: str):
     # Data
     train_ds = load_train_dataset(cfg.data.train_json)
     split = split_and_add_eos(train_ds, tokenizer)
-    eval_ds = load_eval_datasets(cfg.data.eval_paths)
+    street_val_data = load_eval_datasets(cfg.data.eval_paths)
+    bus_val_data = load_eval_dataset_bus_stops(cfg.data.eval_bus_path)
 
     # Example callbacks & training args
     trainer = UnslothTrainer(
@@ -117,8 +118,8 @@ def main(cfg_path: str):
     
     trainer.add_callback(UnifiedEvalCallback(tokenizer, bus_val_data, bus_lines_list, street_val_data))
     trainer.train()
-    model.save_pretrained("./qwen3b-fft-final")
-    tokenizer.save_pretrained("./qwen3b-fft-final")
+#    model.save_pretrained("./qwen3b-fft-final")
+ #   tokenizer.save_pretrained("./qwen3b-fft-final")
 
 if __name__ == "__main__":
     import sys
