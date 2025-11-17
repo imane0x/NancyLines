@@ -64,8 +64,58 @@ def main(cfg_path: str):
         )
     )
 
-    bus_lines_list = []  # fill or load from file
-    trainer.add_callback(UnifiedEvalCallback())
+    bus_lines_list = ['Brabois express : Nancy Gare → Vandœuvre Brabois Santé',
+ 'Brabois express : Vandœuvre Brabois Santé → Nancy Gare',
+ 'Bus 10 : Frouard Munch/Champigneulles Rouchotte → Nancy Place Carnot',
+ 'Bus 10 : Nancy Place Carnot → Frouard Munch/Champigneulles Rouchotte',
+ 'Bus 11 : Saulxures Lorraine → Vandoeuvre Roberval',
+ 'Bus 11 : Tomblaine Maria Deraismes → Vandoeuvre Roberval',
+ 'Bus 11 : Vandoeuvre Roberval → Saulxures Lorraine',
+ 'Bus 11 : Vandoeuvre Roberval → Tomblaine Maria Deraismes',
+ 'Bus 12 : Heillecourt → Malzéville Savlons',
+ 'Bus 12 : Malzéville Savlons → Heillecourt',
+ 'Bus 13 : Dommartemont → Maxéville Écoparc',
+ 'Bus 13 : Maxéville Écoparc → Dommartemont',
+ 'Bus 15 : Essey Porte Verte → Nancy Place Carnot',
+ 'Bus 15 : Nancy Place Carnot → Essey Porte Verte',
+ 'Bus 16 : Malzéville Margeville → Villers Clairlieu',
+ 'Bus 16 : Malzéville Pixerécourt → Villers Clairlieu',
+ 'Bus 16 : Malzéville → Villers Clairlieu',
+ 'Bus 16 : Villers Clairlieu → Malzéville',
+ 'Bus 16 : Villers Clairlieu → Malzéville Margeville',
+ 'Bus 16 : Villers Clairlieu → Malzéville Pixerécourt',
+ 'Bus 17 : Ludres Marvingt → Villers Campus Sciences',
+ 'Bus 17 : Villers Campus Sciences → Ludres Marvingt',
+ 'Bus 20 : Art-sur-Meurthe → Nancy Gare',
+ 'Bus 20 : Nancy Gare → Art-sur-Meurthe',
+ 'Bus 21 : Fléville → Nancy Gare',
+ 'Bus 21 : Ludres Marvingt → Nancy Gare',
+ 'Bus 21 : Nancy Gare → Fléville',
+ 'Bus 21 : Nancy Gare → Ludres Marvingt',
+ 'Bus 22 : Essey Porte Verte → Saint-Max Gérard Barrois',
+ 'Bus 22 : Saint-Max Gérard Barrois → Essey Porte Verte',
+ 'Bus 30 : Laneuveville Gare → Villers Campus Sciences',
+ 'Bus 30 : Villers Campus Sciences → Laneuveville Gare',
+ 'Bus 32 : Essey La Fallée → Nancy Jean Lamour',
+ 'Bus 32 : Nancy Jean Lamour → Essey La Fallée',
+ 'Bus 33 : Jarville Gabriel Fauré → Nancy Gare - République',
+ 'Bus 33 : Nancy Gare - République → Jarville Gabriel Fauré',
+ 'Citadine 1 : Nancy',
+ 'Citadine 2 : Vandœuvre Roberval ↔ Vandœuvre Roberval',
+ 'Corol 1 : Laxou Plateau de Haye → Laxou Plateau de Haye',
+ 'Corol 2 : Laxou Plateau de Haye → Laxou Plateau de Haye',
+ 'Pleine Lune : Gare - Poirel => Gare - Poirel',
+ 'R410 Direct : Toul Gare Routière => Nancy République',
+ 'Tempo 2 : Laneuveville Centre → Laxou Sapinière',
+ 'Tempo 2 : Laxou Sapinière → Laneuveville Centre',
+ 'Tempo 3 : Seichamps Haie Cerlin → Villers Campus Sciences',
+ 'Tempo 3 : Villers Campus Sciences → Seichamps Haie Cerlin',
+ 'Tempo 4 : Houdemont Porte Sud → Laxou Champ le Boeuf',
+ 'Tempo 4 : Laxou Champ le Boeuf → Houdemont Porte Sud',
+ 'Tempo 5 : Maxéville Meurthe-Canal → Vandœuvre Roberval',
+ 'Tempo 5 : Vandœuvre Roberval → Maxéville Meurthe-Canal']
+    
+    trainer.add_callback(UnifiedEvalCallback(tokenizer, bus_val_data, bus_lines_list, street_val_data))
     trainer.train()
     model.save_pretrained("./qwen3b-fft-final")
     tokenizer.save_pretrained("./qwen3b-fft-final")
