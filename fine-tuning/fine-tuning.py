@@ -6,7 +6,7 @@ from transformers import AutoTokenizer
 from .config import load_config
 from .data import load_train_dataset, split_and_add_eos, load_eval_datasets
 from .eval import evaluate_custom_streets, evaluate_tiny_mmlu
-from .callbacks import BusLineEvalCallback
+from .callbacks import UnifiedEvalCallback
 
 def main(cfg_path: str):
     cfg = load_config(cfg_path)
@@ -65,7 +65,7 @@ def main(cfg_path: str):
     )
 
     bus_lines_list = []  # fill or load from file
-    trainer.add_callback()
+    trainer.add_callback(UnifiedEvalCallback())
     trainer.train()
     model.save_pretrained("./qwen3b-fft-final")
     tokenizer.save_pretrained("./qwen3b-fft-final")
