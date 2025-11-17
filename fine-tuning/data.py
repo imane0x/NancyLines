@@ -23,3 +23,10 @@ def load_eval_datasets(paths: List[str]):
         d = load_dataset(p)['train']
         ds_list.append(d)
     return concatenate_datasets(ds_list).shuffle(seed=42)
+
+def load_eval_dataset_bus_stopa(paths: List[str]):
+    # ds_list = []
+    # for p in paths:
+    d = load_dataset(paths[0])['train']
+        #ds_list.append(d)
+    return d.shuffle(seed=42)
