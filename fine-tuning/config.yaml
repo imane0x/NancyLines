@@ -17,6 +17,7 @@ data:
     - "/lustre/fsn1/projects/rech/knb/umq83db/Datasets/eval_data_skip_one_stop"
     - "/lustre/fsn1/projects/rech/knb/umq83db/Datasets/eval_data_skip_two_stops"
     - "/lustre/fsn1/projects/rech/knb/umq83db/Datasets/eval_data_skip_three_stops"
+  eval_bus_path:
     - "/lustre/fsn1/projects/rech/knb/umq83db/Datasets/eval_data_pair_line"
 wandb:
   project: "full_fine_tuning"
