@@ -1,8 +1,0 @@
-model_path: "/lustre/fsn1/projects/rech/knb/umq83db/Models/Qwen3-0.6"
-projector_dir: "/lustre/fsn1/projects/rech/knb/umq83db/TEST/projector"
-train_manifest: "/lustre/fsn1/projects/rech/knb/umq83db/TEST/train_manifest.jsonl"
-
-batch_size: 8
-learning_rate: 3e-5
-epochs: 1
-max_text_len: 64
