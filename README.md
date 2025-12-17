@@ -74,7 +74,7 @@ When the projectors are removed the models doesn’t work.
 
 4 Results
 ![Example](https://github.com/imane0x/NancyLines/blob/196e3dd0a2c006266cd7de25a11f741f076b16c8/curves.png)
-![Example](https://github.com/imane0x/NancyLines/blob/196e3dd0a2c006266cd7de25a11f741f076b16c8/eval_loss.png)
+![Example](https://github.com/imane0x/NancyLines/blob/196e3dd0a2c006266cd7de25a11f741f076b16c8/evaluation_loss.png)
 | Query Type | Precision | Recall | F1 |
 | --- | --- | --- | --- |
 | Direct retrieval (easy) | 0.73 | 0.75 | 0.73 |
@@ -82,8 +82,6 @@ When the projectors are removed the models doesn’t work.
 | Composition: skip 2 stops | 0.53 | 0.30 | 0.36 |
 | Composition: skip 3 stops | 0.38 | 0.20 | 0.23 |
 | Lines via street(s) | 0.46 | 0.21 | 0.28 |
-|  |  |  |  |
-|  |  |  |  |
-|  |  |  |  |
 
-The model demonstrates strong foundational capability, achieving solid F1 (0.73) on direct retrieval tasks and non-trivial performance on compositional reasoning—even with increasing hop complexity (F1 = 0.38 for skip-1, 0.23 for skip-3). Notably, earlier experiments with geometric augmentation (MST-based directions and projection embeddings) already delivered meaningful gains (+12–19% on generalization and topology queries), confirming that *structured spatial priors significantly boost reasoning*. These results suggest the current limits are not inherent to the approach, but addressable via refined representation (e.g., indexed stop tokens, hybrid sequence–graph modeling). With continued integration of geometric awareness and lightweight structural inductive biases, robust, generalizable transit reasoning is well within reach.
+
+The model demonstrates strong foundational capability, achieving solid F1 (0.73) on direct retrieval tasks and non-trivial performance on compositional reasoning—even with increasing hop complexity (F1 = 0.38 for skip-1, 0.23 for skip-3). Notably, earlier experiments with geometric augmentation (MST-based directions and projection embeddings) already delivered meaningful gains (+12–19% on generalization and topology queries), confirming that *structured spatial priors significantly boost reasoning*. These results suggest the current limits are not inherent to the approach, but addressable via exploration of more refined representations.
