@@ -73,7 +73,8 @@ When the projectors are removed the models doesn’t work.
 ---
 
 4 Results
-![Example](https://example.com/image.jpg)
+![Example](https://github.com/imane0x/NancyLines/blob/196e3dd0a2c006266cd7de25a11f741f076b16c8/curves.png)
+![Example](https://github.com/imane0x/NancyLines/blob/196e3dd0a2c006266cd7de25a11f741f076b16c8/eval_loss.png)
 | Query Type | Precision | Recall | F1 |
 | --- | --- | --- | --- |
 | Direct retrieval (easy) | 0.73 | 0.75 | 0.73 |
