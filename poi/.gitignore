@@ -1,0 +1,5 @@
+.venv
+cache
+*.png
+*.csv
+/finetuned_model
