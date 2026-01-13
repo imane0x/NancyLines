@@ -20,9 +20,22 @@ def get_tokens(tokenizer, dataset):
             for _ in range(4):
                 user_input, assistant_output = format_mcqa(sample, mcqa_type)
                 messages = [
-                    {"role": "system", "content": "You are a helpful assistant that helps people find geographic information about points of interest in the city of Nancy, France. You answer MCQA by outputing the correct letter followed by the full answer."},
-                    {"role": "user", "content": user_input},
-                    {"role": "assistant", "content": assistant_output},
+                    {
+                        "role": "system", 
+                        "content": (
+                            "You are a helpful assistant that helps people find geographic information "
+                            "about points of interest in the city of Nancy, France. "
+                            "You answer MCQA by outputing only the correct letter."
+                        )
+                    },
+                    {
+                        "role": "user", 
+                        "content": user_input
+                    },
+                    {
+                        "role": "assistant", 
+                        "content": assistant_output
+                    },
                 ]
                 text = tokenizer.apply_chat_template(messages, add_eos_token=True, tokenize=False) 
                 texts.append(text)
@@ -52,7 +65,7 @@ def main(args):
     )
     model = get_peft_model(model, lora_config)
 
-    vllm_model = LLM(args.model, enable_prefix_caching=True, seed=0)
+    vllm_model = LLM(args.model, enable_prefix_caching=True, gpu_memory_utilization=0.2, max_model_len=320, seed=0)
 
     with wandb.init(
         dir=os.environ["SCRATCH"] + "/wandb", 
@@ -64,7 +77,7 @@ def main(args):
         training_args = TrainingArguments(
             per_device_train_batch_size=64,
             gradient_accumulation_steps=4,
-            # max_length=512,
+            gradient_checkpointing=True,
 
             save_strategy = "steps",
             save_steps=30,
@@ -100,7 +113,7 @@ def main(args):
             tokenizer=tokenizer,
         )
         
-        trainer.add_callback(EvalCallback(tokenizer, vllm_model, eval_dataset, eval_steps=30))
+        trainer.add_callback(EvalCallback(tokenizer, vllm_model, eval_dataset, eval_steps=5))
 
         trainer.train()
 
@@ -108,7 +121,7 @@ def main(args):
 if __name__ == "__main__":
     os.environ["WANDB_PROJECT"] = "poi"
     parser = argparse.ArgumentParser(description="Train the model")
-    parser.add_argument("--model", type=str, default=f"{os.environ['DSDIR']}/HuggingFace_Models/Qwen/Qwen3-4B", help="Model name or path to train.")
+    parser.add_argument("--model", type=str, default=f"{os.environ['DSDIR']}/HuggingFace_Models/Qwen/Qwen3-4B-Instruct-2507", help="Model name or path to train.")
     parser.add_argument("--train_dataset", type=str, default="geoLLM_train_dataset", help="Path to the training dataset.")
     parser.add_argument("--eval_dataset", type=str, default="geoLLM_test_dataset", help="Path to the validation dataset.")
     args = parser.parse_args()
