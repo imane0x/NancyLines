@@ -8,5 +8,10 @@ dependencies = [
     "osmnx",
     "pandas",
     "matplotlib",
-    "gpd"
+    "gpd",
+    "transformers",
+    "datasets",
+    "peft",
+    "bitsandbytes",
+    "geopy",
 ]

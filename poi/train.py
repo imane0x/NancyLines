@@ -1,32 +1,35 @@
 import argparse
 import random
+import os
 
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from transformers import Trainer, TrainingArguments
-from datasets import load_dataset, Dataset
+from datasets import load_from_disk, Dataset
+import wandb
+from vllm import LLM
+
+from utils import format_mcqa
+from eval_callback import EvalCallback
 
 
-def get_training_tokens(tokenizer, dataset):
+def get_tokens(tokenizer, dataset):
     texts = []
     for sample in dataset:
         for mcqa_type in ["cardinal_direction", "proximity"]:
             for _ in range(4):
-                choices = sample[f"{mcqa_type}_propositions"]
-                random.shuffle(choices)
-                letters = [chr(ord('A') + i) for i in range(len(choices))]
-                answer_letter = letters[choices.index(sample[f"{mcqa_type}_answer"])]
-                user_input = sample[f"{mcqa_type}_question"] + "".join([f"\n{letter}: {choice}" for choice, letter in zip(choices, letters)])
-                assistant_output = answer_letter + ": " + sample[f"{mcqa_type}_answer"]
+                user_input, assistant_output = format_mcqa(sample, mcqa_type)
                 messages = [
-                    {"role": "system", "content": "You are a helpful assistant that helps people find geographic information about points of interest in the city of Nancy, France."},
+                    {"role": "system", "content": "You are a helpful assistant that helps people find geographic information about points of interest in the city of Nancy, France. You answer MCQA by outputing the correct letter followed by the full answer."},
                     {"role": "user", "content": user_input},
                     {"role": "assistant", "content": assistant_output},
                 ]
                 text = tokenizer.apply_chat_template(messages, add_eos_token=True, tokenize=False) 
                 texts.append(text)
     random.shuffle(texts)
-    training_tokens = tokenizer(texts[:100], return_tensors="pt", padding=True, truncation=True, max_length=512)
+
+    print("max_length", max([tokenizer(text, return_length=True)["length"] for text in texts]))
+    training_tokens = tokenizer(texts, return_tensors="pt", padding=True, truncation=True, max_length=320)
     training_tokens["labels"] = training_tokens["input_ids"].clone()
     return Dataset.from_dict(training_tokens)
 
@@ -37,10 +40,10 @@ def main(args):
         load_in_8bit=True,
         device_map="auto",
     )
-    tokenizer = AutoTokenizer.from_pretrained(args.model, use_fast=True)
+    tokenizer = AutoTokenizer.from_pretrained(args.model)
     model = prepare_model_for_kbit_training(model)
     lora_config = LoraConfig(
-        r=8,
+        r=16,
         lora_alpha=32,
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
         lora_dropout=0.1,
@@ -49,34 +52,64 @@ def main(args):
     )
     model = get_peft_model(model, lora_config)
 
-    training_args = TrainingArguments(
-        per_device_train_batch_size=16,
-        gradient_accumulation_steps=1,
-        warmup_steps=10,
-        num_train_epochs=1,
-        learning_rate=2e-4,
-        fp16=True,
-        logging_steps=10,
-        output_dir="./finetuned_model",
-        save_total_limit=1,
-        save_steps=20,
-    )
-    dataset = load_dataset(args.dataset_path)
-    training_tokens = get_training_tokens(tokenizer, dataset["train"])
-    print(training_tokens)
+    vllm_model = LLM(args.model, enable_prefix_caching=True, seed=0)
 
-    trainer = Trainer(
-        model=model,
-        args=training_args,
-        train_dataset=training_tokens,
-        tokenizer=tokenizer,
-    )
-    trainer.train()
+    with wandb.init(
+        dir=os.environ["SCRATCH"] + "/wandb", 
+        entity="G-lauzzanaa", 
+        project="poi", 
+        # resume="must"
+        resume="never"
+    ):
+        training_args = TrainingArguments(
+            per_device_train_batch_size=64,
+            gradient_accumulation_steps=4,
+            # max_length=512,
+
+            save_strategy = "steps",
+            save_steps=30,
+            eval_strategy = "steps",
+            eval_steps=30,
+            logging_steps = 1,
+            eval_on_start=True,
+
+            warmup_steps=30,
+            num_train_epochs=1,
+            learning_rate=2e-4,
+            lr_scheduler_type = "cosine",
+
+            optim = "adamw_torch_fused",
+            bf16=True,
+
+            output_dir="./finetuned_model",
+            logging_dir="./finetuned_model/logs",
+            report_to="wandb",
+            seed=0,
+        )
+        train_dataset = load_from_disk(args.train_dataset)
+        training_tokens = get_tokens(tokenizer, train_dataset)
+
+        eval_dataset = load_from_disk(args.eval_dataset)
+        eval_tokens = get_tokens(tokenizer, eval_dataset)
+
+        trainer = Trainer(
+            model=model,
+            args=training_args,
+            train_dataset=training_tokens,
+            eval_dataset=eval_tokens,
+            tokenizer=tokenizer,
+        )
+        
+        trainer.add_callback(EvalCallback(tokenizer, vllm_model, eval_dataset, eval_steps=30))
+
+        trainer.train()
 
 
 if __name__ == "__main__":
+    os.environ["WANDB_PROJECT"] = "poi"
     parser = argparse.ArgumentParser(description="Train the model")
-    parser.add_argument("--model", type=str, default="Qwen/Qwen3-0.6B", help="Model name or path to train.")
-    parser.add_argument("--dataset_path", type=str, default="GLauzza/geoLLM_train_dataset", help="Path to the training dataset.")
+    parser.add_argument("--model", type=str, default=f"{os.environ['DSDIR']}/HuggingFace_Models/Qwen/Qwen3-4B", help="Model name or path to train.")
+    parser.add_argument("--train_dataset", type=str, default="geoLLM_train_dataset", help="Path to the training dataset.")
+    parser.add_argument("--eval_dataset", type=str, default="geoLLM_test_dataset", help="Path to the validation dataset.")
     args = parser.parse_args()
     main(args) 

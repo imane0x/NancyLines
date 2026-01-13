@@ -3,3 +3,5 @@ cache
 *.png
 *.csv
 /finetuned_model
+/*_dataset
+/__pycache__

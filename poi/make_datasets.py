@@ -9,14 +9,9 @@ from geopy.distance import geodesic
 from datasets import Dataset
 
 
-def min_nodes_between(edges, id1, id2):
+def min_nodes_between(graph, id1, id2):
     if id1 == id2:
         return 0
-
-    graph = defaultdict(list)
-    for a, b in edges:
-        graph[a].append(b)
-        graph[b].append(a)
 
     queue = deque([(id1, 0)])
     visited = {id1}
@@ -32,22 +27,48 @@ def min_nodes_between(edges, id1, id2):
     return -1
 
 
-def sample_pair_id(df, distance_matrix, temperature):
-    source_id = random.randint(0, len(df) - 1)
+def get_target_id_at_node_distance(graph, source_id, node_distance):
+    queue = deque([(source_id, 0)])
+    visited = {source_id}
+
+    while queue:
+        node, dist = queue.popleft()
+        if dist == node_distance:
+            return node
+        nodes_to_visit = graph[node]
+        random.shuffle(nodes_to_visit)
+        for neighbor in nodes_to_visit:
+            if neighbor not in visited:
+                visited.add(neighbor)
+                queue.append((neighbor, dist + 1))
+    return -1
+
+
+def sample_train_pair_id(pois_dataset, distance_matrix, temperature):
+    source_id = random.randint(0, len(pois_dataset) - 1)
 
     probs = np.exp(-distance_matrix[source_id] / temperature)
     probs /= probs.sum()
 
-    target_id = np.random.choice(len(df), p=probs)
+    target_id = np.random.choice(len(pois_dataset), p=probs)
 
     return source_id, target_id
 
 
-def build_pair(df, distance_matrix, source_id, target_id):
-    source = df.iloc[source_id]
-    target = df.iloc[target_id]
+def sample_test_pair_id(pois_dataset, train_graph, node_distance):
+    target_id = -1
+    while target_id == -1:
+        source_id = random.randint(0, len(pois_dataset) - 1)
+        target_id = get_target_id_at_node_distance(train_graph, source_id, node_distance)
 
-    plt.plot([source["x"], target["x"]], [source["y"], target["y"]], c='blue', alpha=0.3, linewidth=0.3)
+    return source_id, target_id
+
+
+def build_pair(pois_dataset, distance_matrix, source_id, target_id):
+    source = pois_dataset.iloc[source_id]
+    target = pois_dataset.iloc[target_id]
+
+    plt.plot([source["x"], target["x"]], [source["y"], target["y"]], c='blue', alpha=0.2, linewidth=0.1)
 
     return {
         "source": source["name"], 
@@ -69,10 +90,10 @@ def add_mcqa(dataset, mcqa_type="cardinal_direction", max_distance=None):
         if mcqa_type == "cardinal_direction":
             questions.append(f'"{row["target"]}" se situe:')
             propositions.append([
-                f"Au nord de {row['source']}",
-                f"Au sud de {row['source']}",
-                f"À l'ouest de {row['source']}",
-                f"À l'est de {row['source']}",
+                f'Au nord de "{row["source"]}"',
+                f'Au sud de "{row["source"]}"',
+                f'À l\'ouest de "{row["source"]}"',
+                f'À l\'est de "{row["source"]}"',
             ])
             if -45 <= row["angle"] < 45:
                 answers.append(f'À l\'est de "{row["source"]}"')
@@ -108,63 +129,80 @@ def add_mcqa(dataset, mcqa_type="cardinal_direction", max_distance=None):
 
 
 def main(args):
-    df = pd.read_csv("pois.csv")
+    pois_dataset = pd.read_csv("pois.csv")
 
-    length = geodesic((0, df["lon"].max() - df["lon"].min()), (0,0)).meters
-    height = geodesic((df["lat"].max() - df["lat"].min(), 0), (0,0)).meters
-    df["x"] = (df["lon"] - df["lon"].min()) / (df["lon"].max() - df["lon"].min())*length
-    df["y"] = (df["lat"] - df["lat"].min()) / (df["lat"].max() - df["lat"].min())*height
+    length = geodesic((0, pois_dataset["lon"].max() - pois_dataset["lon"].min()), (0,0)).meters
+    height = geodesic((pois_dataset["lat"].max() - pois_dataset["lat"].min(), 0), (0,0)).meters
+    pois_dataset["x"] = (pois_dataset["lon"] - pois_dataset["lon"].min()) / (pois_dataset["lon"].max() - pois_dataset["lon"].min())*length
+    pois_dataset["y"] = (pois_dataset["lat"] - pois_dataset["lat"].min()) / (pois_dataset["lat"].max() - pois_dataset["lat"].min())*height
     print(f"Area size: {length} m x {height} m")
 
-    coords = df[["x", "y"]].values
+    coords = pois_dataset[["x", "y"]].values
     distance_matrix = np.linalg.norm(coords[:, np.newaxis, :] - coords[np.newaxis, :, :], axis=-1)
     max_distance = distance_matrix.max()
     distance_matrix /= max_distance
     np.fill_diagonal(distance_matrix, np.inf)
     print(f"Max distance between POIs: {max_distance} m")
 
-    plt.imshow(distance_matrix, cmap='hot', interpolation='nearest')
-    plt.colorbar()
-    plt.show()
+    # plt.imshow(distance_matrix, cmap='hot', interpolation='nearest')
+    # plt.colorbar()
+    # plt.show()
 
     train_dataset = []
     for _ in range(args.n_train_sample):
-        source_id, target_id = sample_pair_id(df, distance_matrix, args.temperature)
-        train_dataset.append(build_pair(df, distance_matrix, source_id, target_id))
+        source_id, target_id = sample_train_pair_id(pois_dataset, distance_matrix, args.temperature)
+        pair = build_pair(pois_dataset, distance_matrix, source_id, target_id)
+        train_dataset.append(pair)
 
     train_dataset = pd.DataFrame(train_dataset)
     train_dataset = add_mcqa(train_dataset, mcqa_type="cardinal_direction")
     train_dataset = add_mcqa(train_dataset, mcqa_type="proximity", max_distance=max_distance)
     train_dataset.to_csv("train_dataset.csv", index=False)
     hf_dataset = Dataset.from_pandas(train_dataset)
-    hf_dataset.push_to_hub("GLauzza/geoLLM_train_dataset", private=True)
+    hf_dataset.save_to_disk("geoLLM_train_dataset")
+
+
+    train_edges = [(row["source_id"], row["target_id"]) for k, row in train_dataset.iterrows()]
+    train_graph = defaultdict(list)
+    for a, b in train_edges:
+        train_graph[a].append(b)
+        train_graph[b].append(a)
 
     test_dataset = []
-    all_pairs_ids = [(i, j) for i in range(len(df)) for j in range(len(df))]
-    random.shuffle(all_pairs_ids)
-    for i, j in all_pairs_ids:
-        pair = build_pair(df, distance_matrix, i, j)
-        pair["node_distance"] = min_nodes_between([(row["source_id"], row["target_id"]) for k, row in train_dataset.iterrows()], i, j)
-        print(pair["node_distance"])
-        if 0 < pair["node_distance"] < 8:
+    while len(test_dataset) != args.n_test_sample:
+        for node_distance in range(2,10):
+            source_id, target_id = sample_test_pair_id(pois_dataset, train_graph, node_distance)
+            pair = build_pair(pois_dataset, distance_matrix, source_id, target_id)
+            pair["node_distance"] = node_distance
             test_dataset.append(pair)
-        if len(test_dataset) >= args.n_test_sample:
-            break
+
+    # random way
+    # all_pairs_ids = [(i, j) for i in range(len(pois_dataset)) for j in range(len(pois_dataset))]
+    # random.shuffle(all_pairs_ids)
+    # for i, j in all_pairs_ids:
+    #     pair = build_pair(pois_dataset, distance_matrix, i, j)
+    #     pair["node_distance"] = min_nodes_between(train_graph, i, j)
+    #     print(pair["node_distance"])
+    #     if 0 < pair["node_distance"] < 8:
+    #         test_dataset.append(pair)
+    #     if len(test_dataset) >= args.n_test_sample:
+    #         break
 
     test_dataset = pd.DataFrame(test_dataset)
     test_dataset = add_mcqa(test_dataset, mcqa_type="cardinal_direction")
     test_dataset = add_mcqa(test_dataset, mcqa_type="proximity", max_distance=max_distance)
     test_dataset.to_csv("test_dataset.csv", index=False)
     hf_dataset = Dataset.from_pandas(test_dataset)
-    hf_dataset.push_to_hub("GLauzza/geoLLM_test_dataset", private=True)
+    hf_dataset.save_to_disk("geoLLM_test_dataset")
 
+    plt.savefig("test.png")
     plt.show()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Make datasets for training/testing.")
     parser.add_argument("--n_train_sample", type=int, default=10000, help="Number of samples to generate for train.")
-    parser.add_argument("--n_test_sample", type=int, default=100, help="Number of samples to generate for test.")
+    parser.add_argument("--n_test_sample", type=int, default=800, help="Number of samples to generate for test per node distance.")
     parser.add_argument("--temperature", type=float, default=0.05, help="Temperature for sampling.")
     args = parser.parse_args()
     main(args) 
