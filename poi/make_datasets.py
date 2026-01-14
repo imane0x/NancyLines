@@ -130,6 +130,7 @@ def add_mcqa(dataset, mcqa_type="cardinal_direction", max_distance=None):
 
 def main(args):
     pois_dataset = pd.read_csv("pois.csv")
+    pois_dataset = pois_dataset.sample(n=args.n_pois, random_state=0)
 
     length = geodesic((0, pois_dataset["lon"].max() - pois_dataset["lon"].min()), (0,0)).meters
     height = geodesic((pois_dataset["lat"].max() - pois_dataset["lat"].min(), 0), (0,0)).meters
@@ -170,7 +171,7 @@ def main(args):
 
     test_dataset = []
     while len(test_dataset) != args.n_test_sample:
-        for node_distance in range(2,10):
+        for node_distance in range(1,6):
             source_id, target_id = sample_test_pair_id(pois_dataset, train_graph, node_distance)
             pair = build_pair(pois_dataset, distance_matrix, source_id, target_id)
             pair["node_distance"] = node_distance
@@ -201,8 +202,9 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Make datasets for training/testing.")
-    parser.add_argument("--n_train_sample", type=int, default=10000, help="Number of samples to generate for train.")
-    parser.add_argument("--n_test_sample", type=int, default=800, help="Number of samples to generate for test per node distance.")
-    parser.add_argument("--temperature", type=float, default=0.05, help="Temperature for sampling.")
+    parser.add_argument("--n_pois", type=int, default=100, help="Number of pois to use.")
+    parser.add_argument("--n_train_sample", type=int, default=1000, help="Number of samples to generate for train.")
+    parser.add_argument("--n_test_sample", type=int, default=100, help="Number of samples to generate for test.")
+    parser.add_argument("--temperature", type=float, default=0.02, help="Temperature for sampling.")
     args = parser.parse_args()
     main(args) 

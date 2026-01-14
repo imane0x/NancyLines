@@ -22,6 +22,6 @@ conda activate osm
 set -x
 export WANDB_MODE=offline
 
-#srun python make_datasets.py 
+srun python make_datasets.py 
 srun python train.py
-#srun uv run make_datasets.py 
+

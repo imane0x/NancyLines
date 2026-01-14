@@ -16,4 +16,5 @@ dependencies = [
     "geopy",
     "vllm",
     "distro",
+    "trl",
 ]
