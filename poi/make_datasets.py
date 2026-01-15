@@ -64,11 +64,11 @@ def sample_test_pair_id(pois_dataset, train_graph, node_distance):
     return source_id, target_id
 
 
-def build_pair(pois_dataset, distance_matrix, source_id, target_id):
+def build_pair(pois_dataset, distance_matrix, source_id, target_id, is_test=False):
     source = pois_dataset.iloc[source_id]
     target = pois_dataset.iloc[target_id]
 
-    plt.plot([source["x"], target["x"]], [source["y"], target["y"]], c='blue', alpha=0.2, linewidth=0.1)
+    plt.plot([source["x"], target["x"]], [source["y"], target["y"]], c=("red" if is_test else "blue"), alpha=0.2, linewidth=0.1)
 
     return {
         "source": source["name"], 
@@ -130,6 +130,8 @@ def add_mcqa(dataset, mcqa_type="cardinal_direction", max_distance=None):
 
 def main(args):
     pois_dataset = pd.read_csv("pois.csv")
+    if args.n_pois == -1:
+        args.n_pois = len(pois_dataset)
     pois_dataset = pois_dataset.sample(n=args.n_pois, random_state=0)
 
     length = geodesic((0, pois_dataset["lon"].max() - pois_dataset["lon"].min()), (0,0)).meters
@@ -164,18 +166,22 @@ def main(args):
 
 
     train_edges = [(row["source_id"], row["target_id"]) for k, row in train_dataset.iterrows()]
-    train_graph = defaultdict(list)
+    train_graph_directed = defaultdict(list)
+    train_graph_undirected = defaultdict(list)
     for a, b in train_edges:
-        train_graph[a].append(b)
-        train_graph[b].append(a)
+        train_graph_directed[a].append(b)
+        train_graph_undirected[a].append(b)
+        train_graph_undirected[b].append(a)
 
     test_dataset = []
     while len(test_dataset) != args.n_test_sample:
-        for node_distance in range(1,6):
-            source_id, target_id = sample_test_pair_id(pois_dataset, train_graph, node_distance)
-            pair = build_pair(pois_dataset, distance_matrix, source_id, target_id)
-            pair["node_distance"] = node_distance
-            test_dataset.append(pair)
+        for is_directed, train_graph in enumerate([train_graph_undirected, train_graph_directed]):
+            for node_distance in range(1,args.max_node_dist+1):
+                source_id, target_id = sample_test_pair_id(pois_dataset, train_graph, node_distance)
+                pair = build_pair(pois_dataset, distance_matrix, source_id, target_id, is_test=True)
+                pair["node_distance"] = node_distance
+                pair["directed"] = is_directed == 1
+                test_dataset.append(pair)
 
     # random way
     # all_pairs_ids = [(i, j) for i in range(len(pois_dataset)) for j in range(len(pois_dataset))]
@@ -202,9 +208,11 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Make datasets for training/testing.")
-    parser.add_argument("--n_pois", type=int, default=100, help="Number of pois to use.")
+    parser.add_argument("--n_pois", type=int, default=1000, help="Number of pois to use (-1 to use every pois).")
     parser.add_argument("--n_train_sample", type=int, default=1000, help="Number of samples to generate for train.")
-    parser.add_argument("--n_test_sample", type=int, default=100, help="Number of samples to generate for test.")
-    parser.add_argument("--temperature", type=float, default=0.02, help="Temperature for sampling.")
+    parser.add_argument("--n_test_sample", type=int, default=250, help="Number of samples to generate for test.")
+    parser.add_argument("--temperature", type=float, default=0.01, help="Temperature for sampling.")
+    parser.add_argument("--max_node_dist", type=int, default=5, help="Maximum node distance to evaluate.")
+
     args = parser.parse_args()
     main(args) 

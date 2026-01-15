@@ -9,8 +9,8 @@
 #SBATCH --hint=nomultithread
 #SBATCH --constraint=a100
 #SBATCH --account=knb@a100
-#SBATCH --qos=qos_gpu_a100-dev
-#SBATCH --time=2:00:00
+#SBATCH --qos=qos_gpu_a100-t3
+#SBATCH --time=10:00:00
 
 module purge
 module load arch/a100
@@ -24,4 +24,3 @@ export WANDB_MODE=offline
 
 srun python make_datasets.py 
 srun python train.py
-

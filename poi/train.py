@@ -7,7 +7,6 @@ from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from trl import SFTTrainer, SFTConfig
 from datasets import load_from_disk, Dataset
 import wandb
-from vllm import LLM
 
 from utils import format_mcqa
 from eval_callback import EvalCallback
@@ -37,9 +36,12 @@ def get_tokens(tokenizer, dataset, n_permutation=4):
                         "content": assistant_output
                     },
                 ]
-                conversational_dataset.append(messages)
-    random.shuffle(conversational_dataset)
+                text = tokenizer.apply_chat_template(messages, add_eos_token=True, tokenize=False) 
+                prompt = text.split("</think>\n\n")[0] + "</think>\n\n"
+                completion = text.split("</think>\n\n")[-1]
+                conversational_dataset.append({"prompt": prompt, "completion": completion})
 
+    random.shuffle(conversational_dataset)
     return Dataset.from_list(conversational_dataset)
 
 
@@ -50,16 +52,13 @@ def main(args):
         device_map="auto",
     )
     tokenizer = AutoTokenizer.from_pretrained(args.model)
-    # model = prepare_model_for_kbit_training(model)
-    # lora_config = LoraConfig(
-    #     r=256,
-    #     lora_alpha=512,
-    #     target_modules="all-linear",
-    #     task_type="CAUSAL_LM",
-    # )
-    # model = get_peft_model(model, lora_config)
 
-    vllm_model = LLM(args.model, enable_prefix_caching=True, gpu_memory_utilization=0.2, max_model_len=320, seed=0)
+    lora_config = LoraConfig(
+        r=256,
+        lora_alpha=512,
+        target_modules="all-linear",
+        task_type="CAUSAL_LM",
+    )
 
     with wandb.init(
         dir=os.environ["SCRATCH"] + "/wandb", 
@@ -69,18 +68,17 @@ def main(args):
         resume="never"
     ):
         training_args = SFTConfig(
-            per_device_train_batch_size=1,
-            gradient_accumulation_steps=64,
+            per_device_train_batch_size=16,
+            gradient_accumulation_steps=4,
 
             save_strategy="steps",
-            save_steps=100,
+            save_steps=400,
             eval_strategy="steps",
-            eval_steps=20,
+            eval_steps=100,
             logging_steps=1,
             eval_on_start=True,
-            assistant_only_loss=True,
 
-            warmup_steps=40,
+            warmup_steps=200,
             num_train_epochs=5,
             learning_rate=5e-5,
             lr_scheduler_type="cosine",
@@ -105,9 +103,10 @@ def main(args):
             train_dataset=training_tokens,
             eval_dataset=eval_tokens,
             processing_class=tokenizer,
+            peft_config=lora_config,
         )
         
-        trainer.add_callback(EvalCallback(tokenizer, vllm_model, eval_dataset, eval_steps=5))
+        trainer.add_callback(EvalCallback(tokenizer, eval_dataset, eval_steps=100))
 
         trainer.train()
 
