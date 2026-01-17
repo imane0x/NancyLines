@@ -9,8 +9,8 @@
 #SBATCH --hint=nomultithread
 #SBATCH --constraint=a100
 #SBATCH --account=knb@a100
-#SBATCH --qos=qos_gpu_a100-t3
-#SBATCH --time=10:00:00
+#SBATCH --qos=qos_gpu_a100-dev
+#SBATCH --time=0:10:00
 
 module purge
 module load arch/a100
@@ -22,5 +22,6 @@ conda activate osm
 set -x
 export WANDB_MODE=offline
 
-srun python make_datasets.py 
-srun python train.py
+#srun python make_pois_datasets.py 
+srun python make_gps_traces_datasets.py 
+#srun python train.py

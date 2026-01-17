@@ -17,4 +17,5 @@ dependencies = [
     "vllm",
     "distro",
     "trl",
+    "Pillow",
 ]

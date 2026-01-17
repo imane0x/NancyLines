@@ -53,12 +53,12 @@ def main(args):
     )
     tokenizer = AutoTokenizer.from_pretrained(args.model)
 
-    lora_config = LoraConfig(
-        r=256,
-        lora_alpha=512,
-        target_modules="all-linear",
-        task_type="CAUSAL_LM",
-    )
+    # lora_config = LoraConfig(
+    #     r=256,
+    #     lora_alpha=512,
+    #     target_modules="all-linear",
+    #     task_type="CAUSAL_LM",
+    # )
 
     with wandb.init(
         dir=os.environ["SCRATCH"] + "/wandb", 
@@ -68,19 +68,19 @@ def main(args):
         resume="never"
     ):
         training_args = SFTConfig(
-            per_device_train_batch_size=16,
-            gradient_accumulation_steps=4,
+            per_device_train_batch_size=2,
+            gradient_accumulation_steps=128,
 
             save_strategy="steps",
-            save_steps=400,
+            save_steps=300,
             eval_strategy="steps",
-            eval_steps=100,
+            eval_steps=50,
             logging_steps=1,
             eval_on_start=True,
 
             warmup_steps=200,
-            num_train_epochs=5,
-            learning_rate=5e-5,
+            num_train_epochs=1,
+            learning_rate=2e-5,
             lr_scheduler_type="cosine",
 
             optim="adamw_torch_fused",
@@ -92,7 +92,7 @@ def main(args):
             seed=0,
         )
         train_dataset = load_from_disk(args.train_dataset)
-        training_tokens = get_tokens(tokenizer, train_dataset, n_permutation=4)
+        training_tokens = get_tokens(tokenizer, train_dataset, n_permutation=50)
 
         eval_dataset = load_from_disk(args.eval_dataset)
         eval_tokens = get_tokens(tokenizer, eval_dataset, n_permutation=1)
@@ -103,10 +103,10 @@ def main(args):
             train_dataset=training_tokens,
             eval_dataset=eval_tokens,
             processing_class=tokenizer,
-            peft_config=lora_config,
+            # peft_config=lora_config,
         )
         
-        trainer.add_callback(EvalCallback(tokenizer, eval_dataset, eval_steps=100))
+        trainer.add_callback(EvalCallback(tokenizer, eval_dataset, eval_steps=50))
 
         trainer.train()
 

@@ -2,6 +2,11 @@
 cache
 *.png
 *.csv
+*.gif
+*.gpx
 /finetuned_model
+/gps_traces
 /*_dataset
 /__pycache__
+/.ipynb_checkpoints
+*slurm.save*

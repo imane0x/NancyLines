@@ -207,9 +207,9 @@ def main(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Make datasets for training/testing.")
-    parser.add_argument("--n_pois", type=int, default=1000, help="Number of pois to use (-1 to use every pois).")
-    parser.add_argument("--n_train_sample", type=int, default=1000, help="Number of samples to generate for train.")
+    parser = argparse.ArgumentParser(description="Make pois datasets for training/testing.")
+    parser.add_argument("--n_pois", type=int, default=-1, help="Number of pois to use (-1 to use every pois).")
+    parser.add_argument("--n_train_sample", type=int, default=5000, help="Number of samples to generate for train.")
     parser.add_argument("--n_test_sample", type=int, default=250, help="Number of samples to generate for test.")
     parser.add_argument("--temperature", type=float, default=0.01, help="Temperature for sampling.")
     parser.add_argument("--max_node_dist", type=int, default=5, help="Maximum node distance to evaluate.")

@@ -93,6 +93,6 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Extract POIs from OpenStreetMap for a given city.")
-    parser.add_argument("--city", type=str, default="Métropole du Grand Nancy, France", help="City name to extract POIs from.")
+    parser.add_argument("--city", type=str, default="Nancy, France", help="City name to extract POIs from.")
     args = parser.parse_args()
     main(args) 
