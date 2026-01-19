@@ -5,6 +5,7 @@ import pandas as pd
 import geopandas as gpd
 import matplotlib.pyplot as plt
 from shapely.geometry import Point
+import shapely as sp
 
 
 def main(args):
@@ -17,8 +18,10 @@ def main(args):
 
     city_polygon = ox.geocode_to_gdf(args.city).iloc[0].geometry
 
+
     pois["lon"] = pois.geometry.centroid.x
     pois["lat"] = pois.geometry.centroid.y
+    pois["geometry"] = [sp.get_geometry(sp.polygonize([geometry]), 0) if geometry.geom_type == "LineString" and sp.is_closed(geometry) else geometry for geometry in pois.geometry]
 
     pois = pois[pois.apply(lambda x: city_polygon.contains(Point(x['lon'], x['lat'])), axis=1)]
     pois = pois[pois["highway"].isnull() | pois["highway"].isin([None, "bus_stop", "pedestrian", "rest_area", "steps"])]
@@ -29,6 +32,7 @@ def main(args):
     pois = pois[pois["public_transport"] != "platform"]
     pois = pois[pois["power"].isnull()]
     pois = pois[~pois["amenity"].isin(["atm", "charging_station"])]
+    pois = pois[pois["geometry"].geom_type.isin(["Point", "LineString", "Polygon", "LinearRing"])]
 
     pois = pois.dropna(axis=1, how='all')
 
@@ -76,7 +80,7 @@ def main(args):
     for count in name_counts.most_common(1000):
         print(count)
 
-    result = pois[["name", "lat", "lon", "type"]].copy()
+    result = pois[["name", "lat", "lon", "type", "geometry"]].copy()
 
     fig, ax = plt.subplots(figsize=(10, 10))
     for i, row in result.iterrows():

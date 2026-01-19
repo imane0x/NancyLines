@@ -14,7 +14,6 @@ dependencies = [
     "peft",
     "bitsandbytes",
     "geopy",
-    "vllm",
     "distro",
     "trl",
     "Pillow",

@@ -22,6 +22,6 @@ conda activate osm
 set -x
 export WANDB_MODE=offline
 
-#srun python make_pois_datasets.py 
-srun python make_gps_traces_datasets.py 
+srun python make_poi_datasets.py 
+#srun python make_gps_traces_datasets.py 
 #srun python train.py
