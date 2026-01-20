@@ -47,8 +47,9 @@ def get_target_id_at_node_distance(graph, source_id, node_distance):
     return -1
 
 
-def sample_train_pair_id(pois_dataset, distance_matrix, temperature):
-    source_id = random.randint(0, len(pois_dataset) - 1)
+def sample_train_pair_id(pois_dataset, distance_matrix, temperature, source_id=None):
+    if source_id is None:
+        source_id = random.randint(0, len(pois_dataset) - 1)
 
     probs = np.exp(-distance_matrix[source_id] / temperature)
     probs /= probs.sum()
@@ -60,11 +61,13 @@ def sample_train_pair_id(pois_dataset, distance_matrix, temperature):
 
 def sample_test_pair_id(pois_dataset, train_graph, node_distance):
     target_id = -1
-    while target_id == -1:
-        source_id = random.randint(0, len(pois_dataset) - 1)
+    for source_id in random.sample(range(len(pois_dataset)), len(pois_dataset)):
         target_id = get_target_id_at_node_distance(train_graph, source_id, node_distance)
-
-    return source_id, target_id
+        print(source_id, target_id)
+        if target_id != -1:
+            return source_id, target_id
+    
+    raise Exception(f"No pair found for node distance {node_distance}")
 
 
 def get_relation(source_geo, target_geo):
@@ -103,6 +106,17 @@ def get_relation(source_geo, target_geo):
     return relation
 
 
+def get_size_relation(source_geo, target_geo):
+    if set([source_geo.geom_type, target_geo.geom_type]) == set(["Polygon"]):
+        if sp.area(source_geo) > 1.1*sp.area(target_geo):
+            return "bigger"
+        elif sp.area(source_geo) < 0.9*sp.area(target_geo):
+            return "smaller"
+        else:
+            return "same"
+    return None
+
+
 def build_pair(pois_dataset, distance_matrix, source_id, target_id, is_test=False):
     source = pois_dataset.iloc[source_id]
     target = pois_dataset.iloc[target_id]
@@ -112,18 +126,24 @@ def build_pair(pois_dataset, distance_matrix, source_id, target_id, is_test=Fals
 
     return {
         "source": source["name"], 
+        "source_osm_id": source["id"], 
         "source_id": source_id, 
+
         "target": target["name"],
+        "target_osm_id": target["id"], 
         "target_id": target_id, 
+
         "source_loc": (float(source["x"]), float(source["y"])), 
         "target_loc": (float(target["x"]), float(target["y"])),
+
         "distance": distance_matrix[source_id, target_id],
         "angle": np.degrees(np.arctan2(target["y"] - source["y"], target["x"] - source["x"])),
+        "size":  get_size_relation(source["geometry"], target["geometry"]),
         "relation": get_relation(source["geometry"], target["geometry"]),
     }
 
 
-def get_mcqa_dataset(dataset, mcqa_type, max_distance=None):
+def get_mcqa_dataset(dataset, mcqa_type, max_distance=None, pois_dataset=None, distance_matrix=None, temperature=None):
     mcqa_dataset = []
     for i, sample in dataset.iterrows():
         if mcqa_type == "cardinal_direction" and sample["relation"] == "separated":
@@ -147,7 +167,23 @@ def get_mcqa_dataset(dataset, mcqa_type, max_distance=None):
                 "question": f'"{sample["target"]}" se situe:',
                 "propositions": propositions,
                 "answer": answer,
-            })
+            } | dict(sample))
+        elif mcqa_type == "cardinal_direction_numeric" and sample["relation"] == "separated":
+            answer = int(90-sample["angle"]) % 360
+            propositions = [answer]
+            for i in range(3):
+                while len(propositions) <= i+1:
+                    new_proposition = int(np.random.uniform(0, 360))
+                    print(new_proposition, propositions)
+                    if all([new_proposition <= proposition - 45  or new_proposition >= proposition + 45 for proposition in propositions]):
+                        propositions.append(new_proposition)
+
+            mcqa_dataset.append({
+                "mcqa_type": mcqa_type,
+                "question": f'Quelle est l\'azimut de "{sample["target"]}" depuis "{sample["source"]}"?',
+                "propositions": [str(p) + " degrées" for p in propositions],
+                "answer": str(answer) + " degrées",
+            } | dict(sample))
     
         elif mcqa_type == "proximity" and sample["relation"] == "separated":
             propositions = [
@@ -170,7 +206,7 @@ def get_mcqa_dataset(dataset, mcqa_type, max_distance=None):
                 "question": f'Quelle est la distance entre "{sample["target"]}" et "{sample["source"]}"?',
                 "propositions": propositions,
                 "answer": answer,
-            })
+            } | dict(sample))
     
         elif mcqa_type == "proximity_numeric" and sample["relation"] == "separated":
             answer = int(sample["distance"]*max_distance)
@@ -178,13 +214,15 @@ def get_mcqa_dataset(dataset, mcqa_type, max_distance=None):
             n_above = np.random.randint(4)
             for i in range(n_above):
                 while len(propositions) <= i+1:
-                    new_proposition = int(np.random.uniform(1.2, 3)*answer)
-                    if all([new_proposition <= 0.8*proposition or new_proposition >= 1.2*proposition for proposition in propositions]):
+                    new_proposition = int(np.random.uniform(1.25, 4)*answer)
+                    print(new_proposition, propositions)
+                    if all([new_proposition <= 0.75*proposition or new_proposition >= 1.25*proposition for proposition in propositions]):
                         propositions.append(new_proposition)
             for i in range(3-n_above):
                 while len(propositions) <= i+1+n_above:
-                    new_proposition = int(np.random.uniform(0.05, 0.8)*answer)
-                    if all([new_proposition <= 0.8*proposition or new_proposition >= 1.2*proposition for proposition in propositions]):
+                    new_proposition = int(np.random.uniform(0.01, 0.75)*answer)
+                    print(new_proposition, propositions)
+                    if all([new_proposition <= 0.75*proposition or new_proposition >= 1.25*proposition for proposition in propositions]):
                         propositions.append(new_proposition)
 
             mcqa_dataset.append({
@@ -192,7 +230,7 @@ def get_mcqa_dataset(dataset, mcqa_type, max_distance=None):
                 "question": f'Quelle est la distance entre "{sample["target"]}" et "{sample["source"]}"?',
                 "propositions": [str(p) + " mètres" for p in propositions],
                 "answer": str(answer) + " mètres",
-            })
+            } | dict(sample))
 
         elif mcqa_type == "inclusion":
             propositions = [
@@ -215,9 +253,82 @@ def get_mcqa_dataset(dataset, mcqa_type, max_distance=None):
                 "question": "Laquelle de ces affirmations est vraie ?",
                 "propositions": propositions,
                 "answer": answer,
-            })        
+            } | dict(sample))
+
+        elif mcqa_type == "size" and sample["size"] is not None:
+            propositions = [
+                f'"{sample["source"]}" est plus grand que "{sample["target"]}"',
+                f'"{sample["source"]}" est plus petit que "{sample["target"]}"',
+                f'"{sample["source"]}" et "{sample["target"]}" font à peu près la même taille',
+            ]
+            if sample["size"] == "bigger":
+                answer = propositions[0]
+            elif sample["size"] == "smaller":
+                answer = propositions[1]
+            else:
+                answer = propositions[2]
+
+            mcqa_dataset.append({
+                "mcqa_type": mcqa_type,
+                "question": "Laquelle de ces affirmations est vraie ?",
+                "propositions": propositions,
+                "answer": answer,
+            } | dict(sample))  
+
+        elif mcqa_type == "closest":
+            propositions = [sample["target"]]
+            min_distance = sample["distance"]
+            answer = propositions[-1]
+
+            for i in range(3):
+                source_id, target_id = sample_train_pair_id(pois_dataset, distance_matrix, temperature*(1.75**i), source_id=sample["source_id"])
+                distance = distance_matrix[source_id, target_id]
+                propositions.append(pois_dataset.iloc[target_id]["name"])
+                if distance < min_distance:
+                    min_distance = distance
+                    answer = propositions[-1]
+
+            mcqa_dataset.append({
+                "mcqa_type": mcqa_type,
+                "question": f'Laquelle de ces propositions est la plus proche de "{sample["source"]}" ?',
+                "propositions": propositions,
+                "answer": answer,
+            } | dict(sample))   
 
     return Dataset.from_list(mcqa_dataset)
+
+
+def build_graph(dataset, direction):
+    edges = set([(sample["source_id"], sample["target_id"]) for k, sample in dataset.iterrows()])
+    graph = defaultdict(list)
+
+    for a, b in edges:
+        if direction in ["forward", "both"]:
+            graph[a].append(b)
+        if direction in ["backward", "both"]:
+            if direction == "both" or (b, a) not in edges:
+                graph[b].append(a)
+
+    return graph
+
+
+def build_test_data(pois_dataset, distance_matrix, graph, n_test_sample, max_node_dist):
+    test_dataset = []
+    seen_pairs = []
+    while len(test_dataset) != n_test_sample:
+        for node_distance in range(1,max_node_dist+1):
+            already_sampled = True
+            while already_sampled:
+                source_id, target_id = sample_test_pair_id(pois_dataset, graph, node_distance)
+                if (source_id, target_id) not in seen_pairs:
+                    already_sampled = False
+                    seen_pairs.append((source_id, target_id))
+
+                pair = build_pair(pois_dataset, distance_matrix, source_id, target_id, is_test=True)
+                pair["node_distance"] = node_distance
+                test_dataset.append(pair)
+
+    return pd.DataFrame(test_dataset)
 
 
 def main(args):
@@ -241,79 +352,55 @@ def main(args):
     np.fill_diagonal(distance_matrix, np.inf)
     print(f"Max distance between POIs: {max_distance} m")
 
-    # plt.imshow(distance_matrix, cmap='hot', interpolation='nearest')
-    # plt.colorbar()
-    # plt.show()
-
     train_dataset = []
+    seen_pairs = []
     for _ in range(args.n_train_sample):
-        source_id, target_id = sample_train_pair_id(pois_dataset, distance_matrix, args.temperature)
+        already_sampled = True
+        while already_sampled:
+            source_id, target_id = sample_train_pair_id(pois_dataset, distance_matrix, args.temperature)
+            if (source_id, target_id) not in seen_pairs:
+                already_sampled = False
+                seen_pairs.append((source_id, target_id))
+
         pair = build_pair(pois_dataset, distance_matrix, source_id, target_id)
         train_dataset.append(pair)
 
     train_dataset = pd.DataFrame(train_dataset)
     train_mcqa_dataset = concatenate_datasets([
-        get_mcqa_dataset(train_dataset, mcqa_type="cardinal_direction"),
+        # get_mcqa_dataset(train_dataset, mcqa_type="cardinal_direction"),
+        # get_mcqa_dataset(train_dataset, mcqa_type="cardinal_direction_numeric"),
         get_mcqa_dataset(train_dataset, mcqa_type="proximity", max_distance=max_distance),
-        get_mcqa_dataset(train_dataset, mcqa_type="proximity_numeric", max_distance=max_distance),
-        get_mcqa_dataset(train_dataset, mcqa_type="inclusion"),
+        # get_mcqa_dataset(train_dataset, mcqa_type="proximity_numeric", max_distance=max_distance),
+        # get_mcqa_dataset(train_dataset, mcqa_type="inclusion"),
+        # get_mcqa_dataset(train_dataset, mcqa_type="closest", pois_dataset=pois_dataset, distance_matrix=distance_matrix, temperature=args.temperature),
     ])
     train_mcqa_dataset.save_to_disk("geoLLM_train_dataset")
     train_mcqa_dataset.to_json("geoLLM_train_dataset/train.jsonl", lines=True, orient="records")
 
-
-    train_edges = [(sample["source_id"], sample["target_id"]) for k, sample in train_dataset.iterrows()]
-    train_graph_directed = defaultdict(list)
-    train_graph_undirected = defaultdict(list)
-    for a, b in train_edges:
-        train_graph_directed[a].append(b)
-        train_graph_undirected[a].append(b)
-        train_graph_undirected[b].append(a)
-
-    test_dataset = []
-    while len(test_dataset) != args.n_test_sample:
-        for is_directed, train_graph in enumerate([train_graph_undirected, train_graph_directed]):
-            for node_distance in range(1,args.max_node_dist+1):
-                source_id, target_id = sample_test_pair_id(pois_dataset, train_graph, node_distance)
-                pair = build_pair(pois_dataset, distance_matrix, source_id, target_id, is_test=True)
-                pair["node_distance"] = node_distance
-                pair["directed"] = is_directed == 1
-                test_dataset.append(pair)
-
-    # random way
-    # all_pairs_ids = [(i, j) for i in range(len(pois_dataset)) for j in range(len(pois_dataset))]
-    # random.shuffle(all_pairs_ids)
-    # for i, j in all_pairs_ids:
-    #     pair = build_pair(pois_dataset, distance_matrix, i, j)
-    #     pair["node_distance"] = min_nodes_between(train_graph, i, j)
-    #     print(pair["node_distance"])
-    #     if 0 < pair["node_distance"] < 8:
-    #         test_dataset.append(pair)
-    #     if len(test_dataset) >= args.n_test_sample:
-    #         break
-
-
-    test_dataset = pd.DataFrame(test_dataset)
     test_mcqa_dataset = concatenate_datasets([
-        get_mcqa_dataset(test_dataset, mcqa_type="cardinal_direction"),
-        get_mcqa_dataset(test_dataset, mcqa_type="proximity", max_distance=max_distance),
-        get_mcqa_dataset(test_dataset, mcqa_type="proximity_numeric", max_distance=max_distance),
-        get_mcqa_dataset(test_dataset, mcqa_type="inclusion"),
+        get_mcqa_dataset( # Symmetrie / Reciprocité
+            build_test_data(
+                pois_dataset, distance_matrix, 
+                build_graph(train_dataset[train_dataset["relation"] == "separated"], direction="backward"), 
+                n_test_sample=10, max_node_dist=1
+            ), 
+            mcqa_type="proximity", max_distance=max_distance,
+         ),
     ])
     test_mcqa_dataset.save_to_disk("geoLLM_test_dataset")
     test_mcqa_dataset.to_json("geoLLM_test_dataset/test.jsonl", lines=True, orient="records")
 
-    plt.savefig("test.png")
+    plt.savefig("city_graph.png")
     plt.show()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Make pois datasets for training/testing.")
     parser.add_argument("--n_pois", type=int, default=-1, help="Number of pois to use (-1 to use every pois).")
-    parser.add_argument("--n_train_sample", type=int, default=20000, help="Number of samples to generate for train.")
+    parser.add_argument("--n_train_sample", type=int, default=10000, help="Number of samples to generate for train.")
     parser.add_argument("--n_test_sample", type=int, default=2000, help="Number of samples to generate for test.")
     parser.add_argument("--temperature", type=float, default=0.05, help="Temperature for sampling.")
-    parser.add_argument("--max_node_dist", type=int, default=5, help="Maximum node distance to evaluate.")
+    parser.add_argument("--max_node_dist", type=int, default=1, help="Maximum node distance to evaluate.")
 
     args = parser.parse_args()
     main(args) 
