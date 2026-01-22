@@ -80,7 +80,9 @@ def main(args):
     for count in name_counts.most_common(1000):
         print(count)
 
-    result = pois[["id", "name", "lat", "lon", "type", "geometry"]].copy()
+    pois["is_unique"] = ~pois["name"].duplicated(keep=False)
+
+    result = pois[["id", "name", "is_unique", "lat", "lon", "type", "geometry"]].copy()
 
     fig, ax = plt.subplots(figsize=(10, 10))
     for i, row in result.iterrows():
