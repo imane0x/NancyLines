@@ -10,7 +10,7 @@
 #SBATCH --constraint=a100
 #SBATCH --account=knb@a100
 #SBATCH --qos=qos_gpu_a100-dev
-#SBATCH --time=0:10:00
+#SBATCH --time=2:00:00
 
 module purge
 module load arch/a100

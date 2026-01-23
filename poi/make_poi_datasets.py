@@ -1,6 +1,7 @@
 import argparse
 import random
 from collections import defaultdict, deque
+from itertools import combinations
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -10,6 +11,7 @@ from datasets import Dataset, concatenate_datasets
 import shapely as sp
 import geopandas as gpd
 from shapely import wkt
+
 
 def min_nodes_between(graph, id1, id2):
     if id1 == id2:
@@ -34,10 +36,6 @@ def get_target_id_at_node_distance(graph, source_id, node_distance, n_node=1, re
     visited = {source_id}
     output_nodes = []
 
-    if type(graph) == type([]):
-        graphs = graph
-        graph = graphs[0]
-
     while queue:
         node, dist = queue.popleft()
         if dist == node_distance:
@@ -47,6 +45,8 @@ def get_target_id_at_node_distance(graph, source_id, node_distance, n_node=1, re
                 output_nodes.append(node)
             if len(output_nodes) == n_node:
                 return output_nodes
+        elif dist > node_distance and n_node == -1:
+            return output_nodes
         if type(graph) == type([]):
             nodes_to_visit = graph[dist][node]
         else:
@@ -143,7 +143,6 @@ def build_pair(pois_dataset, distance_matrix, source_id, target_id, is_test=Fals
 
     plt.plot([source["x"], target["x"]], [source["y"], target["y"]], c=("red" if is_test else "blue"), alpha=0.2, linewidth=0.1)
 
-
     return {
         "source": source["name"], 
         "source_osm_id": source["id"], 
@@ -166,12 +165,13 @@ def build_pair(pois_dataset, distance_matrix, source_id, target_id, is_test=Fals
 
 
 def build_graph(dataset, direction):
-    edges = set([(sample["source_id"], sample["target_id"]) for k, sample in dataset.iterrows()])
+    edges = set(zip(dataset["source_id"], dataset["target_id"]))
     graph = defaultdict(list)
 
     for a, b in edges:
-        if direction in ["forward", "both"]:
-            graph[a].append(b)
+        if direction in ["forward", "both", "forward_only"]:
+            if direction != "forward_only" or (b, a) not in edges:
+                graph[a].append(b)
         if direction in ["backward", "both"]:
             if direction == "both" or (b, a) not in edges:
                 graph[b].append(a)
@@ -214,6 +214,23 @@ def build_test_data_width(pois_dataset, distance_matrix, graph, n_test_sample, w
                 test_dataset.append(sample)
 
     return pd.DataFrame(test_dataset)
+
+
+def build_test_data_cayley_menger(pois_dataset, distance_matrix, graph, n_test_sample):
+    non_connected_dataset = build_test_data_depth(pois_dataset, distance_matrix, graph, n_test_sample=100, node_dist=2)
+    test_dataset = []
+    seen_pairs = []
+    for i, sample in non_connected_dataset.iterrows():
+        a_neighbors = get_target_id_at_node_distance(graph, sample["source_id"], node_distance=1, n_node=-1)
+        b_neighbors = get_target_id_at_node_distance(graph, sample["target_id"], node_distance=1, n_node=-1)
+        for neighbor1, neighbor2 in combinations(list(set(a_neighbors) & set(b_neighbors)), 2):
+            if (neighbor1 in graph[neighbor2] or neighbor2 in graph[neighbor1]) and (sample["source_id"], sample["target_id"]) not in seen_pairs:
+                test_dataset.append(sample)
+                seen_pairs.append((sample["source_id"], sample["target_id"]))
+                if len(test_dataset) == n_test_sample:
+                    return pd.DataFrame(test_dataset)
+
+    raise Exception("No Cayley-Menger configuration")
 
 
 def angle_to_cardinality(angle):
@@ -466,33 +483,27 @@ def main(args):
 
     train_dataset = pd.DataFrame(train_dataset)
     train_mcqa_dataset = concatenate_datasets([
-        # get_mcqa_dataset(train_dataset, mcqa_type="cardinality"),
+        get_mcqa_dataset(train_dataset, mcqa_type="cardinality"),
         # get_mcqa_dataset(train_dataset, mcqa_type="cardinality_numeric"),
-        get_mcqa_dataset(train_dataset, mcqa_type="proximity", max_distance=max_distance),
+        # get_mcqa_dataset(train_dataset, mcqa_type="proximity", max_distance=max_distance),
         # get_mcqa_dataset(train_dataset, mcqa_type="proximity_numeric", max_distance=max_distance),
-        # get_mcqa_dataset(train_dataset, mcqa_type="inclusion"),
+        get_mcqa_dataset(train_dataset, mcqa_type="inclusion"),
         # get_mcqa_dataset(train_dataset, mcqa_type="closest", pois_dataset=pois_dataset, distance_matrix=distance_matrix, temperature=args.temperature),
     ])
     train_mcqa_dataset.save_to_disk("geoLLM_train_dataset")
     train_mcqa_dataset.to_json("geoLLM_train_dataset/train.jsonl", lines=True, orient="records")
 
-    print("Saved Training dataset")
-
-    print([sample for i,sample in pois_dataset.iterrows() if min([sample["x"] for i,sample in pois_dataset.iterrows()]) == sample["x"]])
-    print([sample for i,sample in pois_dataset.iterrows() if max([sample["x"] for i,sample in pois_dataset.iterrows()]) == sample["x"]])
-    print([sample for i,sample in pois_dataset.iterrows() if min([sample["y"] for i,sample in pois_dataset.iterrows()]) == sample["y"]])
-    print([sample for i,sample in pois_dataset.iterrows() if max([sample["y"] for i,sample in pois_dataset.iterrows()]) == sample["y"]])
+    # border_point = min([sample["x"] for i,sample in pois_dataset.iterrows()])
+    # print([sample for i,sample in pois_dataset.iterrows() if  == sample["x"]])
 
     unique_train_dataset = train_dataset[train_dataset["is_unique"]]
     
-    print("Creating Test dataset")
-
     test_mcqa_dataset = concatenate_datasets([
         get_mcqa_dataset( # Symmetrie / Reciprocité (almost every)
             build_test_data_depth(
                 pois_dataset, distance_matrix, 
                 build_graph(unique_train_dataset[unique_train_dataset["relation"] == "separated"], direction="backward"), 
-                n_test_sample=5, node_dist=1,
+                n_test_sample=2, node_dist=1,
             ), 
             mcqa_type="proximity", max_distance=max_distance,
          ),
@@ -500,9 +511,89 @@ def main(args):
             build_test_data_depth(
                 pois_dataset, distance_matrix, 
                 build_graph(unique_train_dataset[unique_train_dataset["size"] == "bigger"], direction="forward"), 
-                n_test_sample=5, node_dist=2,
+                n_test_sample=2, node_dist=2,
             ), 
             mcqa_type="size",
+         ),
+        get_mcqa_dataset( # Transitivité*3 (add size et nord nord)
+            build_test_data_depth(
+                pois_dataset, distance_matrix, 
+                build_graph(unique_train_dataset[unique_train_dataset["angle"].map(lambda x: angle_to_cardinality(x) == random.choice(["nord", "sud", "est", "ouest"]))], direction="forward"), 
+                n_test_sample=2, node_dist=2,
+            ), 
+            mcqa_type="cardinality",
+         ),
+        get_mcqa_dataset( # Geometrie Euclidienne (add cardinal_numeric)
+            build_test_data_depth(
+                pois_dataset, distance_matrix, 
+                build_graph(unique_train_dataset[unique_train_dataset["relation"] == "separated"], direction="forward"), 
+                n_test_sample=2, node_dist=2,
+            ), 
+            mcqa_type="proximity_numeric", max_distance=max_distance,
+         ),
+        get_mcqa_dataset( # Distance (add variante loin)
+            build_test_data_width(
+                pois_dataset, distance_matrix, 
+                build_graph(unique_train_dataset[unique_train_dataset["relation"] == "separated"], direction="forward"), 
+                n_test_sample=2, width=4,
+            ), 
+            mcqa_type="distance_closest",
+         ),
+        get_mcqa_dataset( # Double negation (almost every)
+            build_test_data_depth(
+                pois_dataset, distance_matrix, 
+                build_graph(unique_train_dataset[unique_train_dataset["relation"] == "separated"], direction="forward"), 
+                n_test_sample=2, node_dist=1,
+            ), 
+            mcqa_type="cardinality", negation="double",
+         ),
+        get_mcqa_dataset( # Monotonie stricte (do a in and a contains, needs to delete the test sample from the train)
+            build_test_data_depth(
+                pois_dataset, distance_matrix, 
+                build_graph(unique_train_dataset[unique_train_dataset["relation"].isin(["in", "contains"])], direction="forward"), 
+                n_test_sample=2, node_dist=1,
+            ), 
+            mcqa_type="size",
+         ),
+        get_mcqa_dataset( # Incertitude 
+            build_test_data_depth(
+                pois_dataset, distance_matrix, 
+                build_graph(unique_train_dataset, direction="both"), 
+                n_test_sample=2, node_dist=100000000, return_visited=True
+            ), 
+            mcqa_type="proximity", max_distance=max_distance, uncertainty="yes",
+         ),
+        get_mcqa_dataset( # Incertitude 
+            build_test_data_depth(
+                pois_dataset, distance_matrix, 
+                build_graph(unique_train_dataset[unique_train_dataset["relation"] == "separated"], direction="both"), 
+                n_test_sample=2, node_dist=1
+            ), 
+            mcqa_type="proximity", max_distance=max_distance, uncertainty="no",
+         ),
+        get_mcqa_dataset( # Disjonction 
+            build_test_data_depth(
+                pois_dataset, distance_matrix, 
+                build_graph(unique_train_dataset[unique_train_dataset["size"] == "bigger"], direction="forward"), 
+                n_test_sample=2, node_dist=1
+            ), 
+            mcqa_type="size", negation="disjonction",
+         ),
+        get_mcqa_dataset( # Anti-symmetrie 
+            build_test_data_depth(
+                pois_dataset, distance_matrix, 
+                build_graph(unique_train_dataset[unique_train_dataset["size"] == "bigger"], direction="forward"), 
+                n_test_sample=2, node_dist=1
+            ), 
+            mcqa_type="size", negation="anti-symmetry",
+         ),
+        get_mcqa_dataset( # Unicity (needs to add uniquely near in train)
+            build_test_data_depth(
+                pois_dataset, distance_matrix, 
+                build_graph(unique_train_dataset, direction="both"), 
+                n_test_sample=2, node_dist=1
+            ), 
+            mcqa_type="unicity",
          ),
         get_mcqa_dataset( # Transitivité inter features
             build_test_data_depth(
@@ -511,83 +602,21 @@ def main(args):
                     build_graph(unique_train_dataset[unique_train_dataset["relation"] == "in"], direction="forward"),
                     build_graph(unique_train_dataset[unique_train_dataset["relation"] == "separated"], direction="forward"),
                 ], 
-                n_test_sample=1, node_dist=2,
+                n_test_sample=2, node_dist=2,
             ), 
             mcqa_type="cardinality",
          ),
-        get_mcqa_dataset( # Geometrie Euclidienne (add cardinal_numeric)
-            build_test_data_depth(
-                pois_dataset, distance_matrix, 
-                build_graph(unique_train_dataset[unique_train_dataset["relation"] == "separated"], direction="forward"), 
-                n_test_sample=5, node_dist=2,
-            ), 
+        get_mcqa_dataset( # Cayley-Menger determinant (il faut remove les cardinality de ces points)
+            build_test_data_cayley_menger(
+                pois_dataset, distance_matrix,
+                build_graph(unique_train_dataset[unique_train_dataset["relation"] == "separated"], direction="forward"),
+                n_test_sample=2,
+            ),
             mcqa_type="proximity_numeric", max_distance=max_distance,
          ),
-        get_mcqa_dataset( # Distance (add variante loin)
-            build_test_data_width(
-                pois_dataset, distance_matrix, 
-                build_graph(unique_train_dataset[unique_train_dataset["relation"] == "separated"], direction="forward"), 
-                n_test_sample=5, width=4,
-            ), 
-            mcqa_type="distance_closest",
-         ),
-        get_mcqa_dataset( # Double negation (almost every)
-            build_test_data_depth(
-                pois_dataset, distance_matrix, 
-                build_graph(unique_train_dataset[unique_train_dataset["relation"] == "separated"], direction="forward"), 
-                n_test_sample=5, node_dist=1,
-            ), 
-            mcqa_type="cardinality", negation="double",
-         ),
-        # get_mcqa_dataset( # Monotonie stricte (do a in and a contains, needs to delete the test sample from the train)
-        #     build_test_data_depth(
-        #         pois_dataset, distance_matrix, 
-        #         build_graph(unique_train_dataset[unique_train_dataset["relation"].isin(["in", "contains"])], direction="forward"), 
-        #         n_test_sample=5, node_dist=1,
-        #     ), 
-        #     mcqa_type="size",
-        #  ),
-        get_mcqa_dataset( # Incertitude 
-            build_test_data_depth(
-                pois_dataset, distance_matrix, 
-                build_graph(unique_train_dataset, direction="both"), 
-                n_test_sample=5, node_dist=100000000, return_visited=True
-            ), 
-            mcqa_type="proximity", max_distance=max_distance, uncertainty="yes",
-         ),
-        get_mcqa_dataset( # Incertitude 
-            build_test_data_depth(
-                pois_dataset, distance_matrix, 
-                build_graph(unique_train_dataset[unique_train_dataset["relation"] == "separated"], direction="both"), 
-                n_test_sample=5, node_dist=1
-            ), 
-            mcqa_type="proximity", max_distance=max_distance, uncertainty="no",
-         ),
-        get_mcqa_dataset( # Disjonction 
-            build_test_data_depth(
-                pois_dataset, distance_matrix, 
-                build_graph(unique_train_dataset[unique_train_dataset["size"] == "bigger"], direction="forward"), 
-                n_test_sample=5, node_dist=1
-            ), 
-            mcqa_type="size", negation="disjonction",
-         ),
-        get_mcqa_dataset( # Anti-symmetrie 
-            build_test_data_depth(
-                pois_dataset, distance_matrix, 
-                build_graph(unique_train_dataset[unique_train_dataset["size"] == "bigger"], direction="forward"), 
-                n_test_sample=5, node_dist=1
-            ), 
-            mcqa_type="size", negation="anti-symmetry",
-         ),
-        get_mcqa_dataset( # Unicity (needs to add uniquely near in train)
-            build_test_data_depth(
-                pois_dataset, distance_matrix, 
-                build_graph(unique_train_dataset, direction="both"), 
-                n_test_sample=5, node_dist=1
-            ), 
-            mcqa_type="unicity",
-         ),
     ])
+
+
     test_mcqa_dataset.save_to_disk("geoLLM_test_dataset")
     test_mcqa_dataset.to_json("geoLLM_test_dataset/test.jsonl", lines=True, orient="records")
 
@@ -598,9 +627,9 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Make pois datasets for training/testing.")
     parser.add_argument("--n_pois", type=int, default=-1, help="Number of pois to use (-1 to use every pois).")
-    parser.add_argument("--n_train_sample", type=int, default=20000, help="Number of samples to generate for train.")
+    parser.add_argument("--n_train_sample", type=int, default=50000, help="Number of samples to generate for train.")
     parser.add_argument("--n_test_sample", type=int, default=10, help="Number of samples to generate for test.")
-    parser.add_argument("--temperature", type=float, default=10, help="Temperature for sampling.")
+    parser.add_argument("--temperature", type=float, default=0.01, help="Temperature for sampling.")
 
     args = parser.parse_args()
     main(args) 
