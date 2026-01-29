@@ -80,7 +80,6 @@ def sample_test_pair_id(pois_dataset, train_graph, node_distance, n_node=1, retu
                 return source_id, random.choice(target_ids)
         else:
             target_id = get_target_id_at_node_distance(train_graph, source_id, node_distance, n_node=n_node)
-            # print(source_id, target_id)
             if target_id != -1:
                 return source_id, target_id
     
@@ -183,7 +182,6 @@ def build_test_data_depth(pois_dataset, distance_matrix, graph, n_test_sample, n
         already_sampled = True
         while already_sampled:
             source_id, target_id = sample_test_pair_id(pois_dataset, graph, node_dist, return_visited=return_visited)
-            print(source_id, target_id, len(test_dataset))
             if (source_id, target_id) not in seen_pairs:
                 already_sampled = False
                 seen_pairs.append((source_id, target_id))
@@ -214,7 +212,7 @@ def build_test_data_width(pois_dataset, distance_matrix, graph, n_test_sample, w
 
 
 def build_test_data_cayley_menger(pois_dataset, distance_matrix, graph, n_test_sample):
-    non_connected_dataset = build_test_data_depth(pois_dataset, distance_matrix, graph, n_test_sample=100, node_dist=2)
+    non_connected_dataset = build_test_data_depth(pois_dataset, distance_matrix, graph, n_test_sample=500, node_dist=2)
     test_dataset = []
     seen_pairs = []
     for i, sample in non_connected_dataset.iterrows():
@@ -283,12 +281,11 @@ def get_mcqa_dataset(dataset, mcqa_type, generalization_type=None, max_distance=
             } | dict(sample))
         
         elif mcqa_type == "cardinality_numeric" and sample["relation"] == "separated":
-            answer = int(90-sample["angle"]) % 360
+            answer = round(90-sample["angle"]) % 360
             propositions = [answer]
             for i in range(3):
                 while len(propositions) <= i+1:
-                    new_proposition = int(np.random.uniform(0, 360))
-                    print(new_proposition, propositions)
+                    new_proposition = round(np.random.uniform(0, 360))
                     if all([new_proposition <= proposition - 45  or new_proposition >= proposition + 45 for proposition in propositions]):
                         propositions.append(new_proposition)
 
@@ -325,19 +322,17 @@ def get_mcqa_dataset(dataset, mcqa_type, generalization_type=None, max_distance=
             } | dict(sample))
     
         elif mcqa_type == "proximity_numeric" and sample["relation"] == "separated":
-            answer = int(sample["distance"]*max_distance)
+            answer = round(sample["distance"]*max_distance)
             propositions = [answer]
             n_above = np.random.randint(4)
             for i in range(n_above):
                 while len(propositions) <= i+1:
-                    new_proposition = int(np.random.uniform(1.25, 4)*answer)
-                    print(new_proposition, propositions)
+                    new_proposition = round(np.random.uniform(1.25, 4)*answer)
                     if all([new_proposition <= 0.75*proposition or new_proposition >= 1.25*proposition for proposition in propositions]):
                         propositions.append(new_proposition)
             for i in range(3-n_above):
                 while len(propositions) <= i+1+n_above:
-                    new_proposition = int(np.random.uniform(0.01, 0.75)*answer)
-                    print(new_proposition, propositions)
+                    new_proposition = round(np.random.uniform(0.01, 0.75)*answer)
                     if all([new_proposition <= 0.75*proposition or new_proposition >= 1.25*proposition for proposition in propositions]):
                         propositions.append(new_proposition)
 
@@ -501,11 +496,10 @@ def main(args):
     train_dataset = pd.DataFrame(train_dataset)
     train_mcqa_dataset = concatenate_datasets([
         get_mcqa_dataset(train_dataset, mcqa_type="cardinality"),
-        # get_mcqa_dataset(train_dataset, mcqa_type="cardinality_numeric"),
-        # get_mcqa_dataset(train_dataset, mcqa_type="proximity", max_distance=max_distance),
-        # get_mcqa_dataset(train_dataset, mcqa_type="proximity_numeric", max_distance=max_distance),
+        get_mcqa_dataset(train_dataset, mcqa_type="cardinality_numeric"),
+        get_mcqa_dataset(train_dataset, mcqa_type="proximity", max_distance=max_distance),
+        get_mcqa_dataset(train_dataset, mcqa_type="proximity_numeric", max_distance=max_distance),
         get_mcqa_dataset(train_dataset, mcqa_type="inclusion"),
-        # get_mcqa_dataset(train_dataset, mcqa_type="closest", pois_dataset=pois_dataset, distance_matrix=distance_matrix, temperature=args.temperature),
     ])
     train_mcqa_dataset.save_to_disk("geoLLM_train_dataset")
     train_mcqa_dataset.to_json("geoLLM_train_dataset/train.jsonl", lines=True, orient="records")
@@ -515,7 +509,7 @@ def main(args):
             # Symmetrie / Reciprocité
             get_mcqa_dataset(build_test_data_depth(pois_dataset, distance_matrix,
                 build_graph(train_dataset[mask], direction="backward"), 
-                n_test_sample=2, node_dist=1), mcqa_type=mcqa_type, generalization_type="Symmetry/Reciprocity", max_distance=max_distance
+                n_test_sample=5, node_dist=1), mcqa_type=mcqa_type, generalization_type="Symmetry/Reciprocity", max_distance=max_distance
             )
             for mask, mcqa_type in [
                 (train_dataset["relation"] == "separated", "proximity"),
@@ -530,7 +524,7 @@ def main(args):
             # Transitivité
             get_mcqa_dataset(build_test_data_depth(pois_dataset, distance_matrix,
                 build_graph(train_dataset[mask], direction=direction), 
-                n_test_sample=1, node_dist=node_dist), mcqa_type=mcqa_type, generalization_type=f"Transitivity x{node_dist-1} {direction}"
+                n_test_sample=5, node_dist=node_dist), mcqa_type=mcqa_type, generalization_type=f"Transitivity x{node_dist-1} {direction}"
             )
             for (mask, mcqa_type), node_dist, direction in list(product([
                 ((train_dataset["relation"] == "separated") & (train_dataset["angle"].map(lambda x: angle_to_cardinality(x) == random.choice(["nord", "sud", "est", "ouest"]))), "cardinality"),
@@ -542,7 +536,7 @@ def main(args):
             # Geometrie Euclidienne 
             get_mcqa_dataset(build_test_data_depth(pois_dataset, distance_matrix,
                 build_graph(train_dataset[train_dataset["relation"] == "separated"], direction=direction), 
-                n_test_sample=1, node_dist=2), mcqa_type=mcqa_type, generalization_type=f"Euclidian Geometry {direction}", max_distance=max_distance
+                n_test_sample=5, node_dist=2), mcqa_type=mcqa_type, generalization_type=f"Euclidian Geometry {direction}", max_distance=max_distance
             )
             for mcqa_type, direction in list(product(["proximity_numeric", "cardinality_numeric"],["forward", "backward"]))
         ] +
@@ -550,16 +544,16 @@ def main(args):
         #     # Distance
         #     get_mcqa_dataset(build_test_data_width(pois_dataset, distance_matrix,
         #         build_graph(train_dataset[train_dataset["relation"] == "separated"], direction="forward"), 
-        #         n_test_sample=1, width=4), mcqa_type="distance_closest"
+        #         n_test_sample=5, width=4), mcqa_type="distance_closest"
         #     )
         # ] +
         [
             # Double negation
             get_mcqa_dataset(build_test_data_depth(pois_dataset, distance_matrix,
                 build_graph(train_dataset[mask], direction="forward"), 
-                n_test_sample=2, node_dist=1), mcqa_type=mcqa_type, negation="double"
+                n_test_sample=5, node_dist=1), mcqa_type=mcqa_type, generalization_type="Double negation", negation="double", max_distance=max_distance
             )
-            for mask, mcqa in [
+            for mask, mcqa_type in [
                 (train_dataset["relation"] == "separated", "cardinality"),
                 (train_dataset["relation"] == "separated", "proximity"),
             ]
@@ -568,7 +562,7 @@ def main(args):
             # Monotonie stricte (needs to delete the test sample from the train)
             get_mcqa_dataset(build_test_data_depth(pois_dataset, distance_matrix,
                 build_graph(train_dataset[mask], direction=direction), 
-                n_test_sample=1, node_dist=1), mcqa_type="size", generalization_type=f"Strict Monotony {direction}"
+                n_test_sample=5, node_dist=1), mcqa_type="size", generalization_type=f"Strict Monotony {direction}"
             )
             for mask, direction in list(product([
                 train_dataset["relation"] == "in",
@@ -579,7 +573,7 @@ def main(args):
             # Incertitude 
             get_mcqa_dataset(build_test_data_depth(pois_dataset, distance_matrix, 
                 build_graph(train_dataset[mask], direction="both"), 
-                n_test_sample=1, node_dist=1+10000000*(uncertainty=="yes"), return_visited=(uncertainty=="yes")), mcqa_type=mcqa_type, generalization_type="Uncertainty", uncertainty=uncertainty,
+                n_test_sample=5, node_dist=1+10000000*(uncertainty=="yes"), return_visited=(uncertainty=="yes")), mcqa_type=mcqa_type, generalization_type="Uncertainty", uncertainty=uncertainty, max_distance=max_distance
             )
             for (mask, mcqa_type), uncertainty in list(product([
                 (train_dataset["relation"].isin(["in","contains"]), "inclusion"),
@@ -590,7 +584,7 @@ def main(args):
             # Disjonction 
             get_mcqa_dataset(build_test_data_depth(pois_dataset, distance_matrix,
                 build_graph(train_dataset[mask], direction="forward"), 
-                n_test_sample=1, node_dist=1), mcqa_type=mcqa_type, negation="disjonction",
+                n_test_sample=5, node_dist=1), mcqa_type=mcqa_type, generalization_type="Disjunction", negation="disjonction", max_distance=max_distance
             )
             for mask, mcqa_type in [
                 (train_dataset["size"].isin(["bigger", "smaller"]), "size"),
@@ -601,7 +595,7 @@ def main(args):
             # Anti-symmetrie 
             get_mcqa_dataset(build_test_data_depth(pois_dataset, distance_matrix,
                 build_graph(train_dataset[mask], direction="forward"), 
-                n_test_sample=1, node_dist=1), mcqa_type=mcqa_type, negation="anti-symmetry",
+                n_test_sample=5, node_dist=1), mcqa_type=mcqa_type, generalization_type="Anti-symmetry", negation="anti-symmetry",
             )
             for mask, mcqa_type in [
                 (train_dataset["size"].isin(["bigger", "smaller"]), "size"),
@@ -612,7 +606,7 @@ def main(args):
             # Unicity (needs to add uniquely near in train and check test is not the nearest)
             get_mcqa_dataset(build_test_data_depth(pois_dataset, distance_matrix,
                 build_graph(train_dataset, direction="both"), 
-                n_test_sample=2, node_dist=1), mcqa_type=mcqa_type, generalization_type="Unicity"
+                n_test_sample=5, node_dist=1), mcqa_type=mcqa_type, generalization_type="Unicity"
             )
             for mcqa_type in ["unicity_proximity"]
         ] +
@@ -621,14 +615,14 @@ def main(args):
         #     get_mcqa_dataset(build_test_data_depth(pois_dataset, distance_matrix,[
         #             build_graph(train_dataset[train_dataset["relation"] == "in"], direction="forward"),
         #             build_graph(train_dataset[train_dataset["relation"] == "separated"], direction="forward"),
-        #         ], n_test_sample=1, node_dist=2), mcqa_type="cardinality",
+        #         ], n_test_sample=5, node_dist=2), mcqa_type="cardinality",
         #     )
         # ] +
         [
             # Cayley-Menger determinant (il faut remove les cardinality de ces points)
             get_mcqa_dataset(build_test_data_cayley_menger(pois_dataset, distance_matrix,
                 build_graph(train_dataset[train_dataset["relation"] == "separated"], direction=direction),
-                n_test_sample=1), mcqa_type="proximity_numeric", generalization_type=f"Cayley-Menger determinant {direction}", max_distance=max_distance,
+                n_test_sample=5), mcqa_type="proximity_numeric", generalization_type=f"Cayley-Menger determinant {direction}", max_distance=max_distance,
             )
             for direction in ["forward", "backward", "both", "both"]
         ]
