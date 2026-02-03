@@ -8,7 +8,6 @@ dependencies = [
     "osmnx",
     "pandas",
     "matplotlib",
-    "gpd",
     "transformers",
     "datasets",
     "peft",
@@ -17,4 +16,6 @@ dependencies = [
     "distro",
     "trl",
     "Pillow",
+    "mistral-common",
+    "librosa",
 ]
