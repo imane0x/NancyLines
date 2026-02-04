@@ -4,11 +4,8 @@ import os
 
 import numpy as np
 import datasets
-from transformers import VoxtralForConditionalGeneration, AutoProcessor
+from transformers import VoxtralForConditionalGeneration, AutoProcessor, AutoModelForCausalLM, AutoTokenizer
 import torch
-
-
-device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 def main(args):
@@ -21,28 +18,45 @@ def main(args):
     random_baseline = np.mean([1/sum([proposition is not None for proposition in sample["propositions"].values()]) for sample in dataset])
     print(f"Random baseline accuracy: {random_baseline:.4f}")
 
-    model = VoxtralForConditionalGeneration.from_pretrained(args.model_path, torch_dtype=torch.bfloat16, device_map=device)
-    processor = AutoProcessor.from_pretrained(args.model_path)
-    letters_token_ids = processor.tokenizer([chr(ord('A') + i) for i in range(26)], add_special_tokens=False, padding=False)["input_ids"]
+    if args.model_type == "audio-lm":
+        model = VoxtralForConditionalGeneration.from_pretrained(args.model_path, torch_dtype=torch.bfloat16, device_map="auto")
+        processor = AutoProcessor.from_pretrained(args.model_path)
+        tokenizer = processor.tokenizer
+    else:
+        model = AutoModelForCausalLM.from_pretrained(args.model_path, device_map="auto")
+        tokenizer = AutoTokenizer.from_pretrained(args.model_path)
+
+    letters_token_ids = tokenizer([chr(ord('A') + i) for i in range(26)], add_special_tokens=False, padding=False)["input_ids"]
 
     accuracy = 0.0
     for sample in dataset:
-        conversation = [{
-            "role": "user",
-            "content": [{
-                "type": "audio",
-                "path": os.path.join(os.path.dirname(args.file_path), sample["audio"]),
-            },],
-        }]
+        if args.model_type == "audio-lm":
+            conversation = [{
+                "role": "user",
+                "content": [{
+                    "type": "audio",
+                    "path": os.path.join(os.path.dirname(args.file_path), sample["audio"]),
+                },],
+            }]
+            inputs = processor.apply_chat_template(conversation, return_tensors="pt").to(model.device, dtype=torch.bfloat16)
+        else:
+            conversation = [{
+                "role": "system",
+                "content": f"You are answering MCQ, only output the letter corresponding to the answer ({', '.join([str(k) for k,v in sample['propositions'].items()])}).",
+            },
+            {
+                "role": "user",
+                "content": sample["question"] + "\n" + "\n".join([f"{k}: {v}" for k,v in sample["propositions"].items()]),
+            }]
+            inputs = tokenizer.apply_chat_template(conversation, return_tensors="pt").to(model.device)
 
-        inputs = processor.apply_chat_template(conversation).to(device, dtype=torch.bfloat16)
-
-        logits = model.generate(**inputs, max_new_tokens=1, return_dict_in_generate=True, output_scores=True).scores[0]
+        logits = model.generate(**inputs, max_new_tokens=1, do_sample=False, return_dict_in_generate=True, output_scores=True).scores[0]
 
         pred_output = "None"
         best_probs = float('-inf')
-        for i, token_id in enumerate(letters_token_ids):
+        for i, token_id in enumerate(letters_token_ids[:len(sample["propositions"].keys())-1]):
             letter_probs = logits[0, token_id[0]]
+            print(chr(ord('A') + i), letter_probs)
             if letter_probs > best_probs:
                 pred_output = chr(ord('A') + i)
                 best_probs = letter_probs
@@ -59,6 +73,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="evaluate a model on a jsonl dataset.")
     parser.add_argument("--file_path", type=str, default="geoLLM_test_dataset/test.jsonl", help="path to the json to evaluate.")
     parser.add_argument("--model_path", type=str, default="mistralai/Voxtral-Mini-3B-2507", help="path to the model to evaluate.")
+    parser.add_argument("--model_type", type=str, default="audio-lm", help="llm or audio-lm.")
 
     args = parser.parse_args()
     main(args) 
