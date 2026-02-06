@@ -571,6 +571,7 @@ def main(args):
         get_mcqa_dataset(train_dataset, mcqa_type="proximity", max_distance=max_distance),
         get_mcqa_dataset(train_dataset, mcqa_type="proximity_numeric", max_distance=max_distance),
         get_mcqa_dataset(train_dataset, mcqa_type="inclusion"),
+        get_mcqa_dataset(train_dataset, mcqa_type="size"),
     ])
     train_mcqa_dataset.save_to_disk("geoLLM_train_dataset")
     train_mcqa_dataset.to_json("geoLLM_train_dataset/train.jsonl", lines=True, orient="records")
@@ -599,9 +600,21 @@ def main(args):
             )
             for (mask, mcqa_type), node_dist, direction in list(product([
                 ((train_dataset["relation"] == "separated") & (train_dataset["angle"].map(lambda x: angle_to_cardinality(x) == random.choice(["nord", "sud", "est", "ouest"]))), "cardinality"),
-                (train_dataset["relation"] == random.choice(["in", "contains"]), "inclusion"),
+                # (train_dataset["relation"] == random.choice(["in", "contains"]), "inclusion"),
+                # (train_dataset["relation"] == "contains", "inclusion"),
                 (train_dataset["size"] == random.choice(["bigger", "smaller"]), "size"),
             ],[2,4],["forward", "backward"]))
+        ] +
+        [
+            # Transitivité
+            get_mcqa_dataset(build_test_data_depth(pois_dataset, distance_matrix,
+                build_graph(train_dataset[mask], direction=direction), 
+                n_test_sample=15, node_dist=2), mcqa_type="inclusion", generalization_type=f"Transitivity x1 {direction}"
+            )
+            for mask, direction in list(product([
+                train_dataset["relation"] == "in",
+                train_dataset["relation"] == "contains",
+            ],["forward", "backward"]))
         ] +
         [
             # Geometrie Euclidienne 
@@ -717,7 +730,7 @@ if __name__ == "__main__":
     parser.add_argument("--n_pois", type=int, default=-1, help="Number of pois to use (-1 to use every pois).")
     parser.add_argument("--n_train_sample", type=int, default=50000, help="Number of samples to generate for train.")
     parser.add_argument("--n_test_sample", type=int, default=10, help="Number of samples to generate for test.")
-    parser.add_argument("--temperatures", type=float, nargs='+', default=[0.01]*20+[0.05]*3+[0.1], help="Temperatures for sampling.")
+    parser.add_argument("--temperatures", type=float, nargs='+', default=[0.01]*25+[0.05]*5+[0.1], help="Temperatures for sampling.")
 
     args = parser.parse_args()
     main(args) 
