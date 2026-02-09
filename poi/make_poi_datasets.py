@@ -422,14 +422,14 @@ def get_mcqa_dataset(dataset, mcqa_type, generalization_type=None, max_distance=
 
         elif mcqa_type == "size" and sample["size"] != "nan" and (negation != "disjonction" or sample["size"] in ["bigger", "smaller"]):
             if negation == "disjonction":
-                question = f'"{sample["source"]}" est plus {"petit" if sample["size"] == "bigger" else "grand"} que "{sample["target"]} ?"'
+                question = f'"{sample["source"]}" est plus {"petit" if sample["size"] == "bigger" else "grand"} que "{sample["target"]}" ?'
                 propositions = [
                     "Vrai",
                     "Faux",
                 ]
                 answer = propositions[1]
             elif negation == "anti-symmetry":
-                question = f'Est-ce que "{sample["source"]}" est plus {"petit" if sample["size"] == "bigger" else "grand"} que "{sample["target"]} ?"'
+                question = f'Est-ce que "{sample["source"]}" est plus {"petit" if sample["size"] == "bigger" else "grand"} que "{sample["target"]}" ?'
                 propositions = [
                     "Oui",
                     "Non",
@@ -475,9 +475,17 @@ def get_mcqa_dataset(dataset, mcqa_type, generalization_type=None, max_distance=
         elif mcqa_type.startswith("direction"):
             propositions = [sample[f"target_pair_{i}"] for i in range(3)]
             if mcqa_type == "direction_eastern":
-                answer = propositions[np.argmin([sample[f"angle_pair_{i}"] for i in range(3)])]
+                closest_angle = np.argmin([abs(sample[f"angle_pair_{i}"]) for i in range(3)])
+                most_east = np.argmax([sample[f"target_loc_pair_{i}"][0] for i in range(3)])
+                if closest_angle != most_east:
+                    continue
+                answer = propositions[closest_angle]
             elif mcqa_type == "direction_western":
-                answer = propositions[np.argmax([abs(sample[f"angle_pair_{i}"]) for i in range(3)])]
+                closest_angle = np.argmax([abs(sample[f"angle_pair_{i}"]) for i in range(3)])
+                most_west = np.argmin([sample[f"target_loc_pair_{i}"][0] for i in range(3)])
+                if closest_angle != most_west:
+                    continue
+                answer = propositions[closest_angle]
             else:
                 raise Exception(f"{mcqa_type} not supported")
 
@@ -599,17 +607,19 @@ def main(args):
                 n_test_sample=15, node_dist=node_dist), mcqa_type=mcqa_type, generalization_type=f"Transitivity x{node_dist-1} {direction}"
             )
             for (mask, mcqa_type), node_dist, direction in list(product([
-                ((train_dataset["relation"] == "separated") & (train_dataset["angle"].map(lambda x: angle_to_cardinality(x) == random.choice(["nord", "sud", "est", "ouest"]))), "cardinality"),
-                # (train_dataset["relation"] == random.choice(["in", "contains"]), "inclusion"),
-                # (train_dataset["relation"] == "contains", "inclusion"),
-                (train_dataset["size"] == random.choice(["bigger", "smaller"]), "size"),
+                ((train_dataset["relation"] == "separated") & (train_dataset["angle"].map(lambda x: angle_to_cardinality(x) == "nord")), "cardinality"),
+                ((train_dataset["relation"] == "separated") & (train_dataset["angle"].map(lambda x: angle_to_cardinality(x) == "est")), "cardinality"),
+                ((train_dataset["relation"] == "separated") & (train_dataset["angle"].map(lambda x: angle_to_cardinality(x) == "sud")), "cardinality"),
+                ((train_dataset["relation"] == "separated") & (train_dataset["angle"].map(lambda x: angle_to_cardinality(x) == "ouest")), "cardinality"),
+                (train_dataset["size"] == "bigger", "size"),
+                (train_dataset["size"] == "smaller", "size"),
             ],[2,4],["forward", "backward"]))
         ] +
         [
             # Transitivité
             get_mcqa_dataset(build_test_data_depth(pois_dataset, distance_matrix,
                 build_graph(train_dataset[mask], direction=direction), 
-                n_test_sample=15, node_dist=2), mcqa_type="inclusion", generalization_type=f"Transitivity x1 {direction}"
+                n_test_sample=10, node_dist=2), mcqa_type="inclusion", generalization_type=f"Transitivity x1 {direction}"
             )
             for mask, direction in list(product([
                 train_dataset["relation"] == "in",
@@ -628,13 +638,13 @@ def main(args):
             # Width
             get_mcqa_dataset(build_test_data_width(pois_dataset, distance_matrix,
                 build_graph(train_dataset[mask], direction=direction), 
-                n_test_sample=15, width=5), mcqa_type=mcqa_type, generalization_type="Width"
+                n_test_sample=50, width=5), mcqa_type=mcqa_type, generalization_type=f"Width {direction}"
             )
             for mask, mcqa_type, direction in [
                 (train_dataset["relation"] == "separated", "distance_closest", "forward"),
                 (train_dataset["relation"] == "separated", "distance_furtherest", "backward"),
-                (train_dataset["relation"] == "separated", "direction_eastern", "forward"),
-                (train_dataset["relation"] == "separated", "direction_western", "backward"),
+                ((train_dataset["relation"] == "separated") & (train_dataset["angle"].map(lambda x: angle_to_cardinality(x) == "est")), "direction_eastern", "forward"),
+                ((train_dataset["relation"] == "separated") & (train_dataset["angle"].map(lambda x: angle_to_cardinality(x) == "est")), "direction_western", "backward"),
             ]
         ] +
         [
@@ -652,24 +662,24 @@ def main(args):
             # Monotonie stricte (needs to delete the test sample from the train)
             get_mcqa_dataset(build_test_data_depth(pois_dataset, distance_matrix,
                 build_graph(train_dataset[mask], direction=direction), 
-                n_test_sample=15, node_dist=1), mcqa_type="size", generalization_type=f"Strict Monotony {direction}"
+                n_test_sample=200, node_dist=1), mcqa_type="size", generalization_type=f"Strict Monotony {direction}"
             )
             for mask, direction in list(product([
                 train_dataset["relation"] == "in",
                 train_dataset["relation"] == "contains",
             ], ["forward", "backward"]))
         ] +
-        [
-            # Incertitude 
-            get_mcqa_dataset(build_test_data_depth(pois_dataset, distance_matrix, 
-                build_graph(train_dataset[mask], direction="both"), 
-                n_test_sample=15, node_dist=1+10000000*(uncertainty=="yes"), return_visited=(uncertainty=="yes")), mcqa_type=mcqa_type, generalization_type=f"Uncertainty {uncertainty}", uncertainty=uncertainty, max_distance=max_distance
-            )
-            for (mask, mcqa_type), uncertainty in list(product([
-                (train_dataset["relation"].isin(["in","contains"]), "inclusion"),
-                (train_dataset["relation"] == "separated", "proximity"),
-            ], ["yes", "no"]))
-        ] +
+        # [
+        #     # Incertitude 
+        #     get_mcqa_dataset(build_test_data_depth(pois_dataset, distance_matrix, 
+        #         build_graph(train_dataset[mask], direction="both"), 
+        #         n_test_sample=50, node_dist=1+10000000*(uncertainty=="yes"), return_visited=(uncertainty=="yes")), mcqa_type=mcqa_type, generalization_type=f"Uncertainty {uncertainty}", uncertainty=uncertainty, max_distance=max_distance
+        #     )
+        #     for (mask, mcqa_type), uncertainty in list(product([
+        #         (train_dataset["relation"].isin(["in","contains"]), "inclusion"),
+        #         (train_dataset["relation"] == "separated", "proximity"),
+        #     ], ["yes", "no"]))
+        # ] +
         [
             # Disjonction 
             get_mcqa_dataset(build_test_data_depth(pois_dataset, distance_matrix,
@@ -730,7 +740,7 @@ if __name__ == "__main__":
     parser.add_argument("--n_pois", type=int, default=-1, help="Number of pois to use (-1 to use every pois).")
     parser.add_argument("--n_train_sample", type=int, default=50000, help="Number of samples to generate for train.")
     parser.add_argument("--n_test_sample", type=int, default=10, help="Number of samples to generate for test.")
-    parser.add_argument("--temperatures", type=float, nargs='+', default=[0.01]*25+[0.05]*5+[0.1], help="Temperatures for sampling.")
+    parser.add_argument("--temperatures", type=float, nargs='+', default=[0.01]*15+[0.05]*2+[0.1], help="Temperatures for sampling.")
 
     args = parser.parse_args()
     main(args) 

@@ -42,21 +42,21 @@ def main(args):
         else:
             conversation = [{
                 "role": "system",
-                "content": f"You are answering MCQ, only output the letter corresponding to the answer ({', '.join([str(k) for k,v in sample['propositions'].items()])}).",
+                "content": f"Tu es un model qui répond à des questions de géographie. Réponds uniquement par une lettre majuscule correspondant à la bonne réponse ({', '.join([str(k) for k,v in sample['propositions'].items()])}).",
             },
             {
                 "role": "user",
-                "content": sample["question"] + "\n" + "\n".join([f"{k}: {v}" for k,v in sample["propositions"].items()]),
+                "content": sample["question"] + "\n" + "\n".join([f"{k}: {v}" for k,v in sample["propositions"].items() if v is not None]),
             }]
-            inputs = tokenizer.apply_chat_template(conversation, return_tensors="pt").to(model.device)
+            inputs = tokenizer.apply_chat_template(conversation, return_tensors="pt", add_generation_prompt=True).to(model.device)
 
-        logits = model.generate(**inputs, max_new_tokens=1, do_sample=False, return_dict_in_generate=True, output_scores=True).scores[0]
+        logits = model.generate(inputs, max_new_tokens=1, do_sample=False, return_dict_in_generate=True, output_scores=True).scores[0]
 
         pred_output = "None"
         best_probs = float('-inf')
-        for i, token_id in enumerate(letters_token_ids[:len(sample["propositions"].keys())-1]):
+        for i, token_id in enumerate(letters_token_ids[:sum([v is not None for v in sample["propositions"].values()])]):
             letter_probs = logits[0, token_id[0]]
-            print(chr(ord('A') + i), letter_probs)
+            print(f"Letter {chr(ord('A') + i)}: {letter_probs.item():.4f}")
             if letter_probs > best_probs:
                 pred_output = chr(ord('A') + i)
                 best_probs = letter_probs
@@ -64,7 +64,7 @@ def main(args):
         if pred_output == sample["answer_letter"]:
             accuracy += 1.0
 
-        print(f"Question: {sample['question']}, Expected answer: {sample['answer_letter']}, Predicted answer: {pred_output}")
+        print(f"Question: {sample['question']}\nPropositions: {sample['propositions']}\nExpected answer: {sample['answer_letter']}\nPredicted answer: {pred_output}\n\n")
 
     print(f"\nAccuracy: {accuracy / len(dataset):.4f}")
 
