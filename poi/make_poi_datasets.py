@@ -669,17 +669,17 @@ def main(args):
                 train_dataset["relation"] == "contains",
             ], ["forward", "backward"]))
         ] +
-        # [
-        #     # Incertitude 
-        #     get_mcqa_dataset(build_test_data_depth(pois_dataset, distance_matrix, 
-        #         build_graph(train_dataset[mask], direction="both"), 
-        #         n_test_sample=50, node_dist=1+10000000*(uncertainty=="yes"), return_visited=(uncertainty=="yes")), mcqa_type=mcqa_type, generalization_type=f"Uncertainty {uncertainty}", uncertainty=uncertainty, max_distance=max_distance
-        #     )
-        #     for (mask, mcqa_type), uncertainty in list(product([
-        #         (train_dataset["relation"].isin(["in","contains"]), "inclusion"),
-        #         (train_dataset["relation"] == "separated", "proximity"),
-        #     ], ["yes", "no"]))
-        # ] +
+        [
+            # Incertitude 
+            get_mcqa_dataset(build_test_data_depth(pois_dataset, distance_matrix, 
+                build_graph(train_dataset[mask], direction="both"), 
+                n_test_sample=50, node_dist=1+10000000*(uncertainty=="yes"), return_visited=(uncertainty=="yes")), mcqa_type=mcqa_type, generalization_type=f"Uncertainty {uncertainty}", uncertainty=uncertainty, max_distance=max_distance
+            )
+            for (mask, mcqa_type), uncertainty in list(product([
+                (train_dataset["relation"].isin(["in","contains"]), "inclusion"),
+                (train_dataset["relation"] == "separated", "proximity"),
+            ], ["yes", "no"]))
+        ] +
         [
             # Disjonction 
             get_mcqa_dataset(build_test_data_depth(pois_dataset, distance_matrix,

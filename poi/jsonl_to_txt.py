@@ -14,7 +14,7 @@ def main(args):
     splits = np.array([i * len(data) // len(args.names) for i in range(len(args.names))])
     for i, sample in enumerate(data):
         if i in splits:
-            text += "\n\n\n" + args.names[np.where(splits == i)[0][0]] + "-"*20 + "\n"
+            text += "\n\n\n\n"*(i!=0) + args.names[np.where(splits == i)[0][0]] + " " + "="*200 + "\n\n"
         text += f'{i}: {sample["question"]}\n'
         text += "\n".join([i + ": " + proposition for i, proposition in sample["propositions"].items() if proposition is not None])
         if args.show_answer:
