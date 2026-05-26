@@ -62,7 +62,7 @@ In even simpler terms:
 ### **3.3 Projection-Based Enhancement with DeepSeek**
 
 - Switched to **DeepSeek-OCR-Latest-BF16.I64** (adapted for non-OCR use, per user notes).
-- Extracted **2D/3D spatial projections** (e.g., PCA, UMAP, or geodesic embeddings) of stop coordinates.
+- Extracted projections
 - Concatenated projections (as numerical features or quantized tokens) with textual stop/line descriptions.
 - Fine tuning the decoder part
 
